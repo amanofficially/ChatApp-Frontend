@@ -11,3 +11,4 @@ Backend (MERN + Socket.io) integration coming soon.
 cd client
 npm install
 npm run dev
+```
