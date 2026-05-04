@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Bell, BellOff } from "lucide-react";
+import { Volume2, VolumeX, Volume1 } from "lucide-react";
 import { useSound } from "../../context/SoundContext";
 
 export default function SoundToggle() {
@@ -27,19 +27,17 @@ export default function SoundToggle() {
     };
   }, [showSlider]);
 
+  const VolumeIcon = muted ? VolumeX : volume < 0.4 ? Volume1 : Volume2;
+
   return (
     <div className="relative">
       <button
         ref={btnRef}
         onClick={() => setShowSlider((v) => !v)}
         className={`sidebar-icon-btn ${muted ? "text-red-400" : ""}`}
-        title={muted ? "Notification off" : "Notification"}
+        title={muted ? "Sound off" : "Sound on"}
       >
-        {muted ? (
-          <BellOff size={15} strokeWidth={2.5} />
-        ) : (
-          <Bell size={15} strokeWidth={2.5} />
-        )}
+        <VolumeIcon size={15} strokeWidth={2.5} />
       </button>
 
       {showSlider && (

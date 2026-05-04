@@ -1,13 +1,3 @@
-/**
- * SoundContext — Centralized audio engine for ChatFlow
- *
- * Syncs with Settings modal via "cf-sounds" localStorage key
- * (same key ProfileMenu/SettingsModal uses for "Message Sounds" toggle)
- *
- * cf-sounds = "false"  → sound OFF
- * cf-sounds = "true" or missing → sound ON
- */
-
 import {
   createContext,
   useContext,
