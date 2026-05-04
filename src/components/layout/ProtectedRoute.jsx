@@ -28,6 +28,7 @@ export default function ProtectedRoute({ children }) {
     );
   }
 
+  // Not authenticated — replace history so back button can't return to protected page
   if (!user) return <Navigate to="/auth" replace />;
   return children;
 }

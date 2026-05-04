@@ -12,8 +12,8 @@ import {
   Moon,
   Sun,
   Shield,
-  Trash2,
   Check,
+  Phone,
 } from "lucide-react";
 import Avatar from "../ui/Avatar";
 import { useAuth } from "../../context/AuthContext";
@@ -29,8 +29,23 @@ function ProfileModal({ onClose }) {
     username: user?.username || "",
     email: user?.email || "",
     bio: user?.bio || "",
+    mobile: user?.mobile || "",
   });
   const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef();
+
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image too large (max 2MB)");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) =>
+      setForm((f) => ({ ...f, avatar: ev.target.result }));
+    reader.readAsDataURL(file);
+  };
 
   const handleSave = async () => {
     if (!form.username.trim()) {
@@ -38,10 +53,15 @@ function ProfileModal({ onClose }) {
       return;
     }
     setSaving(true);
-    await updateProfile(form);
-    toast.success("Profile updated!");
-    setSaving(false);
-    onClose();
+    try {
+      await updateProfile(form);
+      toast.success("Profile updated!");
+      onClose();
+    } catch {
+      toast.error("Failed to update profile");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -62,14 +82,24 @@ function ProfileModal({ onClose }) {
         {/* Avatar section */}
         <div className="flex flex-col items-center mb-6">
           <div className="relative">
-            <Avatar user={user} size="xl" />
+            <Avatar
+              user={{ ...user, avatar: form.avatar || user?.avatar }}
+              size="xl"
+            />
             <button
-              onClick={() => toast("Photo upload — connect backend! 📸")}
+              onClick={() => fileInputRef.current?.click()}
               className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-brand-500 text-white flex items-center justify-center shadow-lg hover:bg-brand-600 transition-colors"
             >
               <Camera size={13} />
             </button>
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleAvatarChange}
+          />
           <p className="text-xs text-[var(--text-muted)] mt-2">
             Tap to change photo
           </p>
@@ -104,6 +134,20 @@ function ProfileModal({ onClose }) {
             />
           </div>
           <div>
+            <label className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1 inline-block items-center gap-1">
+              <Phone size={11} className="inline" /> Mobile Number
+            </label>
+            <input
+              value={form.mobile}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, mobile: e.target.value }))
+              }
+              className="input-field"
+              placeholder="+91 98765 43210"
+              type="tel"
+            />
+          </div>
+          <div>
             <label className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1 block">
               Bio
             </label>
@@ -113,10 +157,10 @@ function ProfileModal({ onClose }) {
               className="input-field resize-none"
               placeholder="Tell something about yourself..."
               rows={2}
-              maxLength={100}
+              maxLength={200}
             />
             <p className="text-xs text-[var(--text-muted)] text-right mt-0.5">
-              {form.bio.length}/100
+              {form.bio.length}/200
             </p>
           </div>
         </div>
@@ -137,8 +181,7 @@ function ProfileModal({ onClose }) {
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
               <>
-                <Check size={15} />
-                Save
+                <Check size={15} /> Save
               </>
             )}
           </button>
@@ -338,6 +381,17 @@ export default function ProfileMenu() {
               <span className="text-[11px] text-[var(--text-muted)]">
                 {isConnected ? "Online" : "Connecting..."}
               </span>
+              {user?.mobile && (
+                <>
+                  <span className="text-[var(--text-muted)] text-[11px]">
+                    ·
+                  </span>
+                  <Phone size={10} className="text-[var(--text-muted)]" />
+                  <span className="text-[11px] text-[var(--text-muted)] truncate">
+                    {user.mobile}
+                  </span>
+                </>
+              )}
             </div>
           </div>
           <ChevronUp

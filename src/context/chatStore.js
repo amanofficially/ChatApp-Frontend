@@ -1,261 +1,434 @@
-import { create } from 'zustand'
+import { create } from "zustand";
+import axios from "axios";
 
-// ── DEMO USERS ───────────────────────────────────────────────────────────────
-export const DEMO_USERS = {
-  u1: { _id: 'u1', username: 'You', email: 'demo@chatflow.app', avatar: null },
-  u2: { _id: 'u2', username: 'Rahul Sharma', email: 'rahul@test.com', avatar: null, lastSeen: new Date(Date.now() - 60000) },
-  u3: { _id: 'u3', username: 'Priya Patel', email: 'priya@test.com', avatar: null, lastSeen: new Date(Date.now() - 3600000) },
-  u4: { _id: 'u4', username: 'Amit Verma', email: 'amit@test.com', avatar: null, lastSeen: new Date(Date.now() - 7200000) },
-  u5: { _id: 'u5', username: 'Neha Singh', email: 'neha@test.com', avatar: null, lastSeen: new Date(Date.now() - 86400000) },
-  u6: { _id: 'u6', username: 'Arjun Mehta', email: 'arjun@test.com', avatar: null, lastSeen: new Date(Date.now() - 172800000) },
-}
+// ── Helper: persist active conversation ID across page refresh ──
+const getPersistedConvId = () => {
+  try { return sessionStorage.getItem("cf_active_conv") || null; }
+  catch { return null; }
+};
+const setPersistedConvId = (id) => {
+  try {
+    if (id) sessionStorage.setItem("cf_active_conv", id);
+    else sessionStorage.removeItem("cf_active_conv");
+  } catch {}
+};
 
-// ── BOT REPLIES ──────────────────────────────────────────────────────────────
-const BOT_REPLIES = {
-  u2: [
-    'Haan bhai, bol! 😄',
-    'Sahi hai yaar! 🔥',
-    'Kya scene hai? 👀',
-    'Bro kal mil? Coffee peete hain ☕',
-    'Haha 😂 ekdum sahi bola',
-    'Dekh lena, main aata hoon 👍',
-    'Okay okay, samajh gaya 🤝',
-    'Yaar seriously bata, kya hua? 🤔',
-  ],
-  u3: [
-    'Haan, kab milna hai? 📅',
-    'Okay, noted! ✅',
-    'Meeting 3 baje confirm hai 🕒',
-    'Thanks for letting me know 😊',
-    "Sure, I'll check and revert 🙏",
-    "Great idea! Let's go with that 🚀",
-  ],
-  u4: [
-    'Bhai code mein bug hai 😅',
-    'Deploy kar diya, dekho 🚀',
-    'PR raise kar deta hoon ✅',
-    'Kal review karte hain yaar',
-    'Build pass ho gayi finally! 🎉',
-    'Server down tha, ab theek hai 😅',
-  ],
-  u5: [
-    '😊',
-    'Okay!',
-    'Sure sure!',
-    "Haha that's funny 😄",
-    'Noted! Will do.',
-    '❤️',
-  ],
-  u6: [
-    'Weekend plans kya hain? 🏕️',
-    'Game khelne chalein? 🎮',
-    'Movie dekhi? Kaisi thi? 🎬',
-    'Bhai mast tha yaar! 🔥',
-    'Haha ekdum sahi 😂',
-  ],
-}
+// ── Helper: get current user from localStorage ──────────────
+const getCurrentUser = () => {
+  try { return JSON.parse(localStorage.getItem("chat_user") || "{}"); }
+  catch { return {}; }
+};
 
-const getBotReply = (userId, userMsg) => {
-  const replies = BOT_REPLIES[userId] || ['👍', 'Okay!', 'Got it!']
-  const text = (userMsg || '').toLowerCase()
-  if (text.includes('hi') || text.includes('hello') || text.includes('hey'))
-    return 'Hey! 👋 Kya haal hai?'
-  if (text.includes('bye') || text.includes('later'))
-    return 'Bye! Take care 👋'
-  if (text.includes('thanks') || text.includes('thank'))
-    return 'Anytime! 😊🙏'
-  if (text.includes('?'))
-    return 'Hmm, good question! Let me think... 🤔'
-  return replies[Math.floor(Math.random() * replies.length)]
-}
+// Status rank — never go backwards
+const STATUS_RANK = { sent: 0, delivered: 1, read: 2 };
 
-// ── DEMO MESSAGES ─────────────────────────────────────────────────────────────
-const now = Date.now()
-const MIN = 60 * 1000
-const HR = 60 * MIN
-
-const INITIAL_MESSAGES = [
-  // c1 — Rahul
-  { _id: 'm1', conversationId: 'c1', sender: 'u2', content: 'Bhai kya scene hai! 😄', createdAt: new Date(now - 2 * HR) },
-  { _id: 'm2', conversationId: 'c1', sender: 'u1', content: 'Sab badhiya yaar, tu bata?', createdAt: new Date(now - 2 * HR + 2 * MIN) },
-  { _id: 'm3', conversationId: 'c1', sender: 'u2', content: 'Kal coffee peene chalein? ☕', createdAt: new Date(now - 1 * HR) },
-  { _id: 'm4', conversationId: 'c1', sender: 'u1', content: 'Bilkul! Kaun sa cafe?', createdAt: new Date(now - 55 * MIN) },
-  { _id: 'm5', conversationId: 'c1', sender: 'u2', content: 'Brew Brothers chalte hain, 4 baje?', createdAt: new Date(now - 50 * MIN) },
-  { _id: 'm6', conversationId: 'c1', sender: 'u1', content: 'Done bhai! 🔥', createdAt: new Date(now - 45 * MIN) },
-  // c2 — Priya
-  { _id: 'm7', conversationId: 'c2', sender: 'u3', content: 'Meeting kab hai kal?', createdAt: new Date(now - 3 * HR) },
-  { _id: 'm8', conversationId: 'c2', sender: 'u1', content: '3 baje confirm hai', createdAt: new Date(now - 3 * HR + 5 * MIN) },
-  { _id: 'm9', conversationId: 'c2', sender: 'u3', content: 'Perfect! Agenda share kar dena pehle 📋', createdAt: new Date(now - 2 * HR + 30 * MIN) },
-  { _id: 'm10', conversationId: 'c2', sender: 'u1', content: 'Haan kar deta hoon aaj shaam tak', createdAt: new Date(now - 2 * HR + 35 * MIN) },
-  // c3 — Amit
-  { _id: 'm11', conversationId: 'c3', sender: 'u4', content: 'Bhai deployment mein issue aa raha hai 😩', createdAt: new Date(now - 5 * HR) },
-  { _id: 'm12', conversationId: 'c3', sender: 'u1', content: 'Kya error hai?', createdAt: new Date(now - 5 * HR + 3 * MIN) },
-  { _id: 'm13', conversationId: 'c3', sender: 'u4', content: 'CORS policy block kar raha hai prod mein', createdAt: new Date(now - 5 * HR + 5 * MIN) },
-  { _id: 'm14', conversationId: 'c3', sender: 'u1', content: 'Server mein headers add kar — Access-Control-Allow-Origin', createdAt: new Date(now - 4 * HR + 55 * MIN) },
-  { _id: 'm15', conversationId: 'c3', sender: 'u4', content: 'Sorted ho gaya! Thanks bhai 🙌', createdAt: new Date(now - 4 * HR + 58 * MIN) },
-  { _id: 'm16', conversationId: 'c3', sender: 'u1', content: '😄 Koi baat nahi! Build pass ho gayi?', createdAt: new Date(now - 4 * HR + 59 * MIN) },
-  { _id: 'm17', conversationId: 'c3', sender: 'u4', content: 'Haan green hai! 🎉 Deploy kar diya', createdAt: new Date(now - 20 * MIN) },
-  // c4 — Neha
-  { _id: 'm18', conversationId: 'c4', sender: 'u1', content: 'Hey Neha! Kya haal hai?', createdAt: new Date(now - 24 * HR) },
-  { _id: 'm19', conversationId: 'c4', sender: 'u5', content: 'Sab theek hai! Tu bata 😊', createdAt: new Date(now - 23 * HR) },
-  { _id: 'm20', conversationId: 'c4', sender: 'u5', content: 'Weekend kuch plan hai?', createdAt: new Date(now - 10 * MIN) },
-  // c5 — Arjun
-  { _id: 'm21', conversationId: 'c5', sender: 'u6', content: 'Game khelne chalein weekend pe? 🎮', createdAt: new Date(now - 48 * HR) },
-  { _id: 'm22', conversationId: 'c5', sender: 'u1', content: 'Haan bhai! Kaun sa game?', createdAt: new Date(now - 47 * HR) },
-  { _id: 'm23', conversationId: 'c5', sender: 'u6', content: 'Valorant? Ya BGMI chalega?', createdAt: new Date(now - 47 * HR + 5 * MIN) },
-  { _id: 'm24', conversationId: 'c5', sender: 'u1', content: 'Valorant chalte hain 🔥', createdAt: new Date(now - 47 * HR + 10 * MIN) },
-]
-
-const INITIAL_CONVERSATIONS = [
-  {
-    _id: 'c1',
-    participants: [DEMO_USERS.u1, DEMO_USERS.u2],
-    lastMessage: { content: 'Done bhai! 🔥', createdAt: new Date(now - 45 * MIN) },
-    unreadCount: 0,
-  },
-  {
-    _id: 'c2',
-    participants: [DEMO_USERS.u1, DEMO_USERS.u3],
-    lastMessage: { content: 'Haan kar deta hoon aaj shaam tak', createdAt: new Date(now - 2 * HR + 35 * MIN) },
-    unreadCount: 1,
-  },
-  {
-    _id: 'c3',
-    participants: [DEMO_USERS.u1, DEMO_USERS.u4],
-    lastMessage: { content: 'Haan green hai! 🎉 Deploy kar diya', createdAt: new Date(now - 20 * MIN) },
-    unreadCount: 1,
-  },
-  {
-    _id: 'c4',
-    participants: [DEMO_USERS.u1, DEMO_USERS.u5],
-    lastMessage: { content: 'Weekend kuch plan hai?', createdAt: new Date(now - 10 * MIN) },
-    unreadCount: 2,
-  },
-  {
-    _id: 'c5',
-    participants: [DEMO_USERS.u1, DEMO_USERS.u6],
-    lastMessage: { content: 'Valorant chalte hain 🔥', createdAt: new Date(now - 47 * HR + 10 * MIN) },
-    unreadCount: 0,
-  },
-]
-
-// ── STORE ────────────────────────────────────────────────────────────────────
 const useChatStore = create((set, get) => ({
-  conversations: INITIAL_CONVERSATIONS,
+  // ── Core State ───────────────────────────────────────────────
+  conversations: [],
   activeConversation: null,
-  messages: INITIAL_MESSAGES,
+  messagesByConv: {},           // { [convId]: Message[] }
   loadingConversations: false,
   loadingMessages: false,
-  searchQuery: '',
-  typingUsers: {},
+  searchQuery: "",
+  typingUsers: {},              // { [convId]: userId[] }
+  prefetchingConvIds: new Set(),
+  unreadSnapshotByConv: {},     // { [convId]: number } — unread count at time of open
 
   setSearchQuery: (q) => set({ searchQuery: q }),
 
-  setActiveConversation: (conversation) => {
-    set({
-      activeConversation: conversation,
-    })
-    // mark as read
-    set((state) => ({
-      conversations: state.conversations.map((c) =>
-        c._id === conversation._id ? { ...c, unreadCount: 0 } : c,
-      ),
-    }))
-  },
+  getMessagesForConversation: (conversationId) =>
+    get().messagesByConv[conversationId] || [],
 
-  getMessagesForConversation: (conversationId) => {
-    return get().messages.filter((m) => m.conversationId === conversationId)
-  },
+  // ============================================================
+  // FETCH CONVERSATIONS
+  // ============================================================
+  fetchConversations: async () => {
+    set({ loadingConversations: true });
+    try {
+      const { data } = await axios.get("/conversations");
+      const conversations = data.conversations;
+      set({ conversations, loadingConversations: false });
 
-  sendMessage: async (conversationId, content, type = 'text') => {
-    const state = get()
-    const conv = state.conversations.find((c) => c._id === conversationId)
-    const otherUser = conv?.participants?.find((p) => p._id !== 'u1')
-
-    const newMsg = {
-      _id: Date.now().toString(),
-      conversationId,
-      sender: 'u1',
-      content,
-      type,
-      createdAt: new Date(),
+      // Restore active conversation from sessionStorage on first load
+      const persistedId = getPersistedConvId();
+      if (persistedId && !get().activeConversation) {
+        const conv = conversations.find((c) => c._id === persistedId);
+        if (conv) get().setActiveConversation(conv);
+      }
+    } catch (err) {
+      set({ loadingConversations: false });
     }
+  },
+
+  // ============================================================
+  // SET ACTIVE CONVERSATION
+  // ============================================================
+  setActiveConversation: async (conversation) => {
+    if (!conversation) {
+      setPersistedConvId(null);
+      set({ activeConversation: null, loadingMessages: false });
+      return;
+    }
+    setPersistedConvId(conversation._id);
+
+    const cached = get().messagesByConv[conversation._id] || [];
+    const isCacheValid =
+      cached.length > 0 && !cached.some((m) => m._isOptimistic);
+
+    // Snapshot the unread count BEFORE zeroing it — MessageList uses this
+    const currentUnread = get().conversations.find(
+      (c) => c._id === conversation._id
+    )?.unreadCount || 0;
 
     set((s) => ({
-      messages: [...s.messages, newMsg],
+      activeConversation: conversation,
+      loadingMessages: !isCacheValid,
       conversations: s.conversations.map((c) =>
-        c._id === conversationId
-          ? { ...c, lastMessage: { content, createdAt: new Date() } }
-          : c,
+        c._id === conversation._id ? { ...c, unreadCount: 0 } : c
       ),
-    }))
+      unreadSnapshotByConv: {
+        ...s.unreadSnapshotByConv,
+        [conversation._id]: currentUnread,
+      },
+    }));
 
-    // Show typing indicator
-    if (otherUser) {
+    // Fire read marks in background
+    axios.put(`/messages/${conversation._id}/read`).catch(() => {});
+    axios.put(`/conversations/${conversation._id}/read`).catch(() => {});
+
+    if (isCacheValid) return;
+
+    try {
+      const { data } = await axios.get(`/messages/${conversation._id}`);
       set((s) => ({
-        typingUsers: { ...s.typingUsers, [conversationId]: [otherUser._id] },
-      }))
+        messagesByConv: { ...s.messagesByConv, [conversation._id]: data.messages },
+        loadingMessages: false,
+      }));
+    } catch (err) {
+      set({ loadingMessages: false });
+    }
+  },
 
-      // Bot reply after delay
-      setTimeout(() => {
-        const botReply = {
-          _id: (Date.now() + 1).toString(),
-          conversationId,
-          sender: otherUser._id,
-          content: getBotReply(otherUser._id, content),
-          type: 'text',
-          createdAt: new Date(),
+  // ============================================================
+  // PREFETCH MESSAGES on sidebar hover
+  // ============================================================
+  prefetchMessages: async (conversationId) => {
+    const s = get();
+    if (
+      (s.messagesByConv[conversationId] || []).length > 0 ||
+      s.prefetchingConvIds.has(conversationId)
+    ) return;
+
+    set((s) => ({ prefetchingConvIds: new Set([...s.prefetchingConvIds, conversationId]) }));
+    try {
+      const { data } = await axios.get(`/messages/${conversationId}`);
+      set((s) => {
+        const next = new Set(s.prefetchingConvIds);
+        next.delete(conversationId);
+        return {
+          messagesByConv: { ...s.messagesByConv, [conversationId]: data.messages },
+          prefetchingConvIds: next,
+        };
+      });
+    } catch {
+      set((s) => {
+        const next = new Set(s.prefetchingConvIds);
+        next.delete(conversationId);
+        return { prefetchingConvIds: next };
+      });
+    }
+  },
+
+  // ============================================================
+  // SEND MESSAGE — optimistic UI
+  // ============================================================
+  sendMessage: async (conversationId, content, type = "text") => {
+    const tempId = `temp-${Date.now()}`;
+    const user = getCurrentUser();
+
+    const optimistic = {
+      _id: tempId, conversationId, content, type,
+      status: "sent", createdAt: new Date().toISOString(),
+      sender: user, _isOptimistic: true,
+    };
+
+    set((s) => ({
+      messagesByConv: {
+        ...s.messagesByConv,
+        [conversationId]: [...(s.messagesByConv[conversationId] || []), optimistic],
+      },
+    }));
+
+    try {
+      const { data } = await axios.post("/messages", { conversationId, content, type });
+      const newMsg = data.message;
+
+      set((s) => {
+        const msgs = s.messagesByConv[conversationId] || [];
+
+        // Case 1: temp still exists → replace it
+        if (msgs.some((m) => m._id === tempId)) {
+          return {
+            messagesByConv: {
+              ...s.messagesByConv,
+              [conversationId]: msgs.map((m) => (m._id === tempId ? newMsg : m)),
+            },
+            conversations: s.conversations
+              .map((c) =>
+                c._id === conversationId
+                  ? { ...c, lastMessage: newMsg, updatedAt: newMsg.createdAt }
+                  : c,
+              )
+              .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+          };
         }
 
-        set((s) => ({
-          messages: [...s.messages, botReply],
-          typingUsers: { ...s.typingUsers, [conversationId]: [] },
-          conversations: s.conversations.map((c) =>
-            c._id === conversationId
-              ? { ...c, lastMessage: botReply }
-              : c,
-          ),
-        }))
-      }, 1000 + Math.random() * 1000)
-    }
+        // Case 2: socket already replaced temp — just update sidebar
+        return {
+          conversations: s.conversations
+            .map((c) =>
+              c._id === conversationId
+                ? { ...c, lastMessage: newMsg, updatedAt: newMsg.createdAt }
+                : c,
+            )
+            .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+        };
+      });
 
-    return newMsg
+      return newMsg;
+    } catch (err) {
+      // Remove optimistic message on failure
+      set((s) => ({
+        messagesByConv: {
+          ...s.messagesByConv,
+          [conversationId]: (s.messagesByConv[conversationId] || []).filter(
+            (m) => m._id !== tempId
+          ),
+        },
+      }));
+      throw err;
+    }
+  },
+
+  // ============================================================
+  // RECEIVE INCOMING MESSAGE
+  // ============================================================
+  receiveMessage: (message, conversationId) => {
+    set((s) => {
+      const existing = s.messagesByConv[conversationId] || [];
+
+      // Dedup 1: exact _id match
+      if (existing.some((m) => m._id === message._id)) return s;
+
+      const msgSenderId =
+        typeof message.sender === "object"
+          ? message.sender._id?.toString()
+          : message.sender?.toString();
+      const msgTime = new Date(message.createdAt).getTime();
+
+      // Dedup 2: same sender + content + within 5s (echo guard)
+      const isDuplicate = existing.some((m) => {
+        if (m._isOptimistic) return false;
+        const mSenderId =
+          typeof m.sender === "object"
+            ? m.sender._id?.toString()
+            : m.sender?.toString();
+        const mTime = new Date(m.createdAt).getTime();
+        return (
+          mSenderId === msgSenderId &&
+          m.content === message.content &&
+          Math.abs(mTime - msgTime) < 5000
+        );
+      });
+      if (isDuplicate) return s;
+
+      // Replace matching optimistic bubble if present
+      const hasOptimisticMatch = existing.some(
+        (m) =>
+          m._isOptimistic &&
+          m.content === message.content &&
+          msgSenderId ===
+            (typeof m.sender === "object"
+              ? m.sender._id?.toString()
+              : m.sender?.toString()),
+      );
+
+      const updatedMessages = hasOptimisticMatch
+        ? existing.map((m) =>
+            m._isOptimistic && m.content === message.content ? message : m,
+          )
+        : [...existing, message];
+
+      const isActive = s.activeConversation?._id === conversationId;
+      const convExists = s.conversations.some((c) => c._id === conversationId);
+
+      const updatedConversations = convExists
+        ? s.conversations
+            .map((c) => {
+              if (c._id !== conversationId) return c;
+              return {
+                ...c,
+                lastMessage: message,
+                updatedAt: message.createdAt,
+                unreadCount: isActive ? 0 : (c.unreadCount || 0) + 1,
+              };
+            })
+            .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+        : s.conversations;
+
+      return {
+        messagesByConv: {
+          ...s.messagesByConv,
+          [conversationId]: updatedMessages,
+        },
+        conversations: updatedConversations,
+      };
+    });
+  },
+
+  removeMessage: (messageId, conversationId) => {
+    set((s) => {
+      if (!conversationId) {
+        const updated = {};
+        for (const id in s.messagesByConv) {
+          updated[id] = s.messagesByConv[id].filter((m) => m._id !== messageId);
+        }
+        return { messagesByConv: updated };
+      }
+      return {
+        messagesByConv: {
+          ...s.messagesByConv,
+          [conversationId]: (s.messagesByConv[conversationId] || []).filter(
+            (m) => m._id !== messageId
+          ),
+        },
+      };
+    });
+  },
+
+  addConversationIfMissing: (conversation) => {
+    set((s) => {
+      if (s.conversations.some((c) => c._id === conversation._id)) return s;
+      return { conversations: [conversation, ...s.conversations] };
+    });
   },
 
   createConversation: async (participantId) => {
-    const state = get()
-    // Check if convo already exists
-    const existing = state.conversations.find((c) =>
-      c.participants.some((p) => p._id === participantId),
-    )
-    if (existing) return existing
-
-    const otherUser = DEMO_USERS[participantId] || {
-      _id: participantId,
-      username: 'New User',
-      email: '',
-    }
-
-    const newConv = {
-      _id: `c_${Date.now()}`,
-      participants: [DEMO_USERS.u1, otherUser],
-      lastMessage: { content: 'Chat started', createdAt: new Date() },
-      unreadCount: 0,
-    }
-
-    set((s) => ({ conversations: [newConv, ...s.conversations] }))
-    return newConv
+    const { data } = await axios.post("/conversations", { participantId });
+    const conv = data.conversation;
+    get().addConversationIfMissing(conv);
+    return conv;
   },
 
-  markAsRead: (conversationId) => {
-    set((s) => ({
-      conversations: s.conversations.map((c) =>
-        c._id === conversationId ? { ...c, unreadCount: 0 } : c,
-      ),
-    }))
+  clearMessages: () => {
+    setPersistedConvId(null);
+    set({ activeConversation: null });
   },
 
-  clearMessages: () => set({ activeConversation: null }),
-}))
+  // ============================================================
+  // UPDATE MESSAGE STATUS
+  // ============================================================
+  updateMessageStatus: (messageId, status) => {
+    const nextRank = STATUS_RANK[status] ?? -1;
+    if (nextRank < 0) return;
 
-export default useChatStore
+    set((s) => {
+      let targetConvId = null;
+      for (const convId in s.messagesByConv) {
+        if (s.messagesByConv[convId].some((m) => m._id === messageId)) {
+          targetConvId = convId;
+          break;
+        }
+      }
+      if (!targetConvId) return s;
+
+      return {
+        messagesByConv: {
+          ...s.messagesByConv,
+          [targetConvId]: s.messagesByConv[targetConvId].map((msg) => {
+            if (msg._id !== messageId) return msg;
+            const currRank = STATUS_RANK[msg.status] ?? 0;
+            return nextRank > currRank ? { ...msg, status } : msg;
+          }),
+        },
+      };
+    });
+  },
+
+  // ============================================================
+  // MARK ALL IN CONVERSATION AS READ
+  // ============================================================
+  updateConversationRead: (conversationId) => {
+    const user = getCurrentUser();
+    set((s) => {
+      const msgs = s.messagesByConv[conversationId];
+      if (!msgs) return s;
+      return {
+        messagesByConv: {
+          ...s.messagesByConv,
+          [conversationId]: msgs.map((m) => {
+            const sid = typeof m.sender === "object" ? m.sender?._id : m.sender;
+            return sid?.toString() === user._id?.toString()
+              ? { ...m, status: "read" }
+              : m;
+          }),
+        },
+      };
+    });
+  },
+
+  // ============================================================
+  // REACTIONS
+  // ============================================================
+  updateReaction: (messageId, userId, emoji) => {
+    set((s) => {
+      let targetConvId = null;
+      for (const convId in s.messagesByConv) {
+        if (s.messagesByConv[convId].some((m) => m._id === messageId)) {
+          targetConvId = convId;
+          break;
+        }
+      }
+      if (!targetConvId) return s;
+
+      return {
+        messagesByConv: {
+          ...s.messagesByConv,
+          [targetConvId]: s.messagesByConv[targetConvId].map((msg) => {
+            if (msg._id !== messageId) return msg;
+            // reactions can be a plain object or a Map — normalise to plain object
+            const existing =
+              msg.reactions instanceof Map
+                ? Object.fromEntries(msg.reactions)
+                : { ...(msg.reactions || {}) };
+            if (emoji) existing[userId] = emoji;
+            else delete existing[userId];
+            return { ...msg, reactions: existing };
+          }),
+        },
+      };
+    });
+  },
+
+  // ============================================================
+  // TYPING INDICATORS
+  // ============================================================
+  setTypingUser: (conversationId, userId, isTyping) => {
+    set((s) => {
+      const list = s.typingUsers[conversationId] || [];
+      const already = list.includes(userId);
+      if (isTyping && already) return s;
+      if (!isTyping && !already) return s;
+      return {
+        typingUsers: {
+          ...s.typingUsers,
+          [conversationId]: isTyping
+            ? [...list, userId]
+            : list.filter((id) => id !== userId),
+        },
+      };
+    });
+  },
+}));
+
+export default useChatStore;
