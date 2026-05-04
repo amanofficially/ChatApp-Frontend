@@ -33,7 +33,7 @@ export default function SoundToggle() {
         ref={btnRef}
         onClick={() => setShowSlider((v) => !v)}
         className={`sidebar-icon-btn ${muted ? "text-red-400" : ""}`}
-        title={muted ? "Sound off" : "Sound on"}
+        title={muted ? "Notification off" : "Notification"}
       >
         {muted ? (
           <BellOff size={15} strokeWidth={2.5} />

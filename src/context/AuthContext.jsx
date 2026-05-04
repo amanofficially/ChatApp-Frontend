@@ -3,7 +3,11 @@ import axios from "axios";
 
 const AuthContext = createContext();
 
-axios.defaults.baseURL = "/api";
+// In production, VITE_SERVER_URL points to the Render backend.
+// In dev, requests go to "/" and Vite's proxy forwards /api → localhost:5000.
+axios.defaults.baseURL = import.meta.env.VITE_SERVER_URL
+  ? `${import.meta.env.VITE_SERVER_URL}/api`
+  : "/api";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
