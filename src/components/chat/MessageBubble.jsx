@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   Check, CheckCheck, Copy, Trash2,
   MoreHorizontal, SmilePlus,
-  FileText, Download, X as XIcon,
+  FileText, Download, X as XIcon, ExternalLink,
 } from "lucide-react";
 import { formatMessageTime } from "../../utils/helpers";
 import Avatar from "../ui/Avatar";
@@ -11,8 +11,8 @@ import axios from "axios";
 import useChatStore from "../../context/chatStore";
 
 const REACTIONS   = ["❤️", "😂", "😮", "😢", "👍", "👎"];
-const LONG_PRESS_MS = 450;
-const isTouch = window.matchMedia("(hover: none)").matches;
+const LONG_PRESS_MS = 500;
+const isTouch = () => window.matchMedia("(hover: none) and (pointer: coarse)").matches;
 
 // ── useOutsideClick ─────────────────────────────────────────────────────────
 function useOutsideClick(ref, onClose, anchorRef = null) {
@@ -24,7 +24,7 @@ function useOutsideClick(ref, onClose, anchorRef = null) {
     };
     const t = setTimeout(() => {
       document.addEventListener("mousedown", handler);
-      document.addEventListener("touchstart", handler);
+      document.addEventListener("touchstart", handler, { passive: true });
     }, 50);
     return () => {
       clearTimeout(t);
@@ -34,32 +34,109 @@ function useOutsideClick(ref, onClose, anchorRef = null) {
   }, [ref, anchorRef, onClose]);
 }
 
-// ── Image Lightbox ────────────────────────────────────────────────────────────
+// ── Image Lightbox ─────────────────────────────────────────────────────────
 function ImageLightbox({ src, onClose }) {
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    // Prevent body scroll while lightbox is open
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handler);
+      document.body.style.overflow = "";
+    };
   }, [onClose]);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm"
       onClick={onClose}
     >
+      {/* Close button */}
       <button
-        className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center
-                   rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+        className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center
+                   rounded-full bg-white/15 hover:bg-white/25 text-white transition-colors z-10"
         onClick={onClose}
+        style={{ touchAction: "manipulation" }}
       >
-        <XIcon size={18} />
+        <XIcon size={20} />
       </button>
+
+      {/* Download button */}
+      <a
+        href={src}
+        download
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute top-4 left-4 w-10 h-10 flex items-center justify-center
+                   rounded-full bg-white/15 hover:bg-white/25 text-white transition-colors z-10"
+        onClick={(e) => e.stopPropagation()}
+        style={{ touchAction: "manipulation" }}
+      >
+        <Download size={18} />
+      </a>
+
       <img
         src={src}
         alt="full size"
-        className="max-w-[92vw] max-h-[88vh] rounded-2xl shadow-2xl object-contain"
+        className="max-w-[95vw] max-h-[88vh] rounded-xl shadow-2xl object-contain"
         onClick={(e) => e.stopPropagation()}
+        style={{ WebkitTouchCallout: "default" }}
       />
+    </div>
+  );
+}
+
+// ── PDF/File Viewer ──────────────────────────────────────────────────────────
+function FileActionMenu({ url, fileName, onClose }) {
+  const ref = useRef();
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (!ref.current?.contains(e.target)) onClose();
+    };
+    setTimeout(() => {
+      document.addEventListener("mousedown", handler);
+      document.addEventListener("touchstart", handler, { passive: true });
+    }, 50);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
+  }, [onClose]);
+
+  const isPdf = fileName?.toLowerCase().endsWith(".pdf") ||
+                url?.includes("/upload/") && url?.includes(".pdf");
+
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-full mb-2 left-0 z-50 card py-1.5 min-w-[180px] shadow-xl rounded-2xl"
+      style={{ animation: "slideUp 0.15s ease-out" }}
+    >
+      {isPdf && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={onClose}
+          className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm
+            text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+        >
+          <ExternalLink size={14} className="text-[var(--text-muted)]" />
+          <span>Open PDF</span>
+        </a>
+      )}
+      <a
+        href={url}
+        download={fileName || true}
+        onClick={onClose}
+        className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm
+          text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors rounded-b-2xl"
+      >
+        <Download size={14} className="text-[var(--text-muted)]" />
+        <span>Download</span>
+      </a>
     </div>
   );
 }
@@ -81,8 +158,9 @@ function ReactionBar({ isOwn, currentReaction, onReact, onClose }) {
           key={emoji}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => { onReact(emoji); onClose(); }}
-          className={`text-xl w-9 h-9 flex items-center justify-center rounded-xl
-            transition-all duration-150 select-none
+          style={{ touchAction: "manipulation" }}
+          className={`text-xl w-10 h-10 flex items-center justify-center rounded-xl
+            transition-all duration-150
             ${currentReaction === emoji
               ? "bg-brand-500/20 scale-110 ring-2 ring-brand-500/40"
               : "hover:bg-[var(--bg-tertiary)] hover:scale-125 active:scale-110"
@@ -102,15 +180,16 @@ function ContextMenu({ isOwn, onCopy, onDelete, onClose, anchorRef }) {
   return (
     <div
       ref={ref}
-      className={`absolute bottom-full mb-1 z-40 card py-1 min-w-[130px] shadow-xl
+      className={`absolute bottom-full mb-1 z-40 card py-1 min-w-[140px] shadow-xl rounded-2xl
         ${isOwn ? "right-0" : "left-0"}`}
       style={{ animation: "slideUp 0.15s ease-out" }}
     >
       {onCopy && (
         <button
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onCopy(); }}
-          className="flex items-center gap-2.5 w-full px-3 py-2 text-sm
-            text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors rounded-t-xl"
+          style={{ touchAction: "manipulation" }}
+          className="flex items-center gap-2.5 w-full px-4 py-3 text-sm
+            text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
         >
           <Copy size={14} className="text-[var(--text-muted)]" />
           <span>Copy</span>
@@ -119,8 +198,9 @@ function ContextMenu({ isOwn, onCopy, onDelete, onClose, anchorRef }) {
       {isOwn && (
         <button
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
-          className="flex items-center gap-2.5 w-full px-3 py-2 text-sm
-            text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-b-xl"
+          style={{ touchAction: "manipulation" }}
+          className="flex items-center gap-2.5 w-full px-4 py-3 text-sm
+            text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
         >
           <Trash2 size={14} />
           <span>Delete</span>
@@ -146,9 +226,10 @@ function ReactionSummary({ reactions, isOwn, onPillClick }) {
           key={emoji}
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => { e.stopPropagation(); onPillClick(); }}
+          style={{ touchAction: "manipulation" }}
           className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs
             bg-[var(--bg-secondary)] border border-[var(--border)] shadow-md
-            hover:border-brand-500/50 active:scale-95 transition-all cursor-pointer select-none"
+            hover:border-brand-500/50 active:scale-95 transition-all cursor-pointer"
         >
           <span style={{ fontSize: 13 }}>{emoji}</span>
           {count > 1 && (
@@ -169,45 +250,65 @@ function TickIcon({ status }) {
   return <Check size={13} className="text-[var(--text-muted)] flex-shrink-0" />;
 }
 
-// ── MessageContent — renders text / image / file ──────────────────────────────
+// ── MessageContent ─────────────────────────────────────────────────────────────
 function MessageContent({ message, isOwn, onImageClick }) {
+  const [showFileActions, setShowFileActions] = useState(false);
+
   if (message.type === "image") {
     return (
-      <img
-        src={message.content}
-        alt="shared image"
-        loading="lazy"
-        className="rounded-xl max-h-64 max-w-[260px] w-full object-cover cursor-zoom-in"
+      <button
         onClick={(e) => { e.stopPropagation(); onImageClick(message.content); }}
-      />
+        style={{ touchAction: "manipulation", display: "block" }}
+        className="rounded-xl overflow-hidden focus:outline-none active:opacity-80"
+      >
+        <img
+          src={message.content}
+          alt="shared image"
+          loading="lazy"
+          className="rounded-xl max-h-64 w-full object-cover cursor-zoom-in"
+          style={{ maxWidth: "240px", display: "block" }}
+          onError={(e) => {
+            e.target.style.display = "none";
+          }}
+        />
+      </button>
     );
   }
 
   if (message.type === "file") {
-    const fileName = message.fileName || "Download file";
+    const fileName = message.fileName || "File";
+    const url = message.content;
+
     return (
-      <a
-        href={message.content}
-        target="_blank"
-        rel="noopener noreferrer"
-        download={fileName}
-        onClick={(e) => e.stopPropagation()}
-        className={`flex items-center gap-3 min-w-[180px] max-w-[260px] p-1 rounded-lg
-          hover:opacity-80 transition-opacity group/file
-          ${isOwn ? "text-white" : "text-[var(--text-primary)]"}`}
-      >
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0
-          ${isOwn ? "bg-white/20" : "bg-brand-500/15"}`}>
-          <FileText size={20} className={isOwn ? "text-white" : "text-brand-500"} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{fileName}</p>
-          <p className={`text-[11px] ${isOwn ? "text-white/60" : "text-[var(--text-muted)]"}`}>
-            Tap to download
-          </p>
-        </div>
-        <Download size={15} className="flex-shrink-0 opacity-60 group-hover/file:opacity-100 transition-opacity" />
-      </a>
+      <div className="relative">
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowFileActions((v) => !v); }}
+          style={{ touchAction: "manipulation" }}
+          className={`flex items-center gap-3 min-w-[180px] max-w-[240px] p-1 rounded-lg
+            hover:opacity-80 transition-opacity group/file text-left w-full
+            ${isOwn ? "text-white" : "text-[var(--text-primary)]"}`}
+        >
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0
+            ${isOwn ? "bg-white/20" : "bg-brand-500/15"}`}>
+            <FileText size={20} className={isOwn ? "text-white" : "text-brand-500"} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{fileName}</p>
+            <p className={`text-[11px] ${isOwn ? "text-white/60" : "text-[var(--text-muted)]"}`}>
+              Tap to open / download
+            </p>
+          </div>
+          <Download size={15} className="flex-shrink-0 opacity-60" />
+        </button>
+
+        {showFileActions && (
+          <FileActionMenu
+            url={url}
+            fileName={fileName}
+            onClose={() => setShowFileActions(false)}
+          />
+        )}
+      </div>
     );
   }
 
@@ -225,6 +326,7 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
   const longPressTimer   = useRef(null);
   const isLongPressing   = useRef(false);
   const longPressFired   = useRef(false);
+  const touchStartPos    = useRef(null);
   const menuBtnRef       = useRef();
 
   const activeConversationId = useChatStore((s) => s.activeConversation?._id);
@@ -248,7 +350,7 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
   const openReactions = useCallback(() => { setShowReactions(true); setShowMenu(false); }, []);
   const openMenu      = useCallback(() => { setShowMenu(true); setShowReactions(false); }, []);
 
-  // ── copy (text only) ───────────────────────────────────────────────────────
+  // ── copy (text only) ─────────────────────────────────────────────────────
   const handleCopy = message.type === "text"
     ? useCallback(async () => {
         closeAll();
@@ -270,7 +372,7 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
       }, [message.content, closeAll])
     : null;
 
-  // ── delete ─────────────────────────────────────────────────────────────────
+  // ── delete ───────────────────────────────────────────────────────────────
   const handleDelete = useCallback(async () => {
     closeAll();
     setIsDeleting(true);
@@ -284,7 +386,7 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
     }
   }, [message._id, activeConversationId, removeMessage, closeAll]);
 
-  // ── react ──────────────────────────────────────────────────────────────────
+  // ── react ────────────────────────────────────────────────────────────────
   const handleReact = useCallback(async (emoji) => {
     if (!myUserId) return;
     const { updateReaction } = useChatStore.getState();
@@ -298,56 +400,65 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
     }
   }, [message._id, myUserId, reactions]);
 
-  // ── touch handlers ─────────────────────────────────────────────────────────
+  // ── touch handlers (long-press → reactions, tap → toggle menu) ───────────
   const handleTouchStart = useCallback((e) => {
-    if (e.target.tagName === "IMG" || e.target.tagName === "A") return;
+    // Let taps on IMG / A / BUTTON flow normally
+    if (["IMG", "A", "BUTTON"].includes(e.target.tagName)) return;
     longPressFired.current = false;
     isLongPressing.current = true;
+    touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+
     longPressTimer.current = setTimeout(() => {
       longPressFired.current = true;
       isLongPressing.current = false;
+      // Kill any accidental selection
       window.getSelection()?.removeAllRanges();
-      if (navigator.vibrate) navigator.vibrate(30);
+      if (navigator.vibrate) navigator.vibrate(25);
       openReactions();
     }, LONG_PRESS_MS);
   }, [openReactions]);
 
-  const handleTouchMove = useCallback(() => {
-    if (!isLongPressing.current) return;
-    clearTimeout(longPressTimer.current);
-    isLongPressing.current = false;
+  const handleTouchMove = useCallback((e) => {
+    if (!isLongPressing.current || !touchStartPos.current) return;
+    const dx = Math.abs(e.touches[0].clientX - touchStartPos.current.x);
+    const dy = Math.abs(e.touches[0].clientY - touchStartPos.current.y);
+    if (dx > 8 || dy > 8) {
+      clearTimeout(longPressTimer.current);
+      isLongPressing.current = false;
+    }
   }, []);
 
   const handleTouchEnd = useCallback((e) => {
-    if (e.target.tagName === "IMG" || e.target.tagName === "A") return;
+    if (["IMG", "A", "BUTTON"].includes(e.target.tagName)) return;
     const wasPressAndHold = longPressFired.current;
     clearTimeout(longPressTimer.current);
     isLongPressing.current = false;
-    e.preventDefault();
+    touchStartPos.current = null;
     if (wasPressAndHold) return;
+    // Short tap: toggle menu
     setShowMenu((prev) => { if (prev) return false; setShowReactions(false); return true; });
   }, []);
 
   if (isDeleting) return null;
 
-  // ── Optimistic bubble ──────────────────────────────────────────────────────
+  // ── Optimistic bubble ────────────────────────────────────────────────────
   if (message._isOptimistic) {
     return (
       <div className="flex flex-col items-end mb-0.5">
         <div className="flex items-end gap-2 w-full flex-row-reverse">
           <div className="flex flex-col gap-0.5 items-end min-w-0">
-            <div className="message-bubble-out max-w-[75vw] break-words whitespace-pre-wrap opacity-70 relative pb-4">
+            <div className="message-bubble-out break-words whitespace-pre-wrap opacity-70 relative pb-4">
               {message.type === "image" ? (
-                <img src={message.content} alt="sending..." className="rounded-xl max-h-64 max-w-[260px]" loading="lazy" />
+                <img src={message.content} alt="sending..." className="rounded-xl max-h-48" loading="lazy" style={{ maxWidth: "200px" }} />
               ) : message.type === "file" ? (
                 <div className="flex items-center gap-2 min-w-[160px]">
-                  <FileText size={20} className="text-white/70 flex-shrink-0" />
-                  <span className="text-sm truncate max-w-[180px]">{message.fileName || "File"}</span>
+                  <FileText size={18} className="text-white/70 flex-shrink-0" />
+                  <span className="text-sm truncate max-w-[160px]">{message.fileName || "File"}</span>
                 </div>
               ) : (
                 <span>{message.content}</span>
               )}
-              <span className="absolute bottom-1 right-2 text-[9px] text-white/50 leading-none select-none">
+              <span className="absolute bottom-1 right-2 text-[9px] text-white/50 leading-none">
                 {formatMessageTime(message.createdAt)}
               </span>
             </div>
@@ -360,10 +471,11 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
     );
   }
 
-  // ── Main bubble ────────────────────────────────────────────────────────────
+  const touch = isTouch();
+
+  // ── Main bubble ──────────────────────────────────────────────────────────
   return (
     <>
-      {/* Image lightbox */}
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
@@ -385,7 +497,7 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
             <div className="relative flex items-center gap-1 max-w-full">
 
               {/* Desktop hover controls */}
-              {!isTouch && (
+              {!touch && (
                 <div
                   className={`flex items-center gap-0.5 transition-opacity duration-150 flex-shrink-0
                     ${isOwn ? "order-first" : "order-last"}
@@ -419,14 +531,14 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
               <div className="relative">
                 <div
                   className={`relative ${isOwn ? "message-bubble-out" : "message-bubble-in"}
-                    max-w-[75vw] break-words whitespace-pre-wrap animate-slide-up select-text cursor-default`}
+                    break-words whitespace-pre-wrap animate-slide-up`}
                   style={{
-                    paddingBottom: message.type === "file" ? "1.5rem" : "1.25rem",
-                    minWidth: message.type === "file" ? "200px" : "80px",
+                    paddingBottom: "1.25rem",
+                    minWidth: message.type === "file" ? "180px" : "60px",
                   }}
-                  onTouchStart={isTouch ? handleTouchStart : undefined}
-                  onTouchMove={isTouch ? handleTouchMove : undefined}
-                  onTouchEnd={isTouch ? handleTouchEnd : undefined}
+                  onTouchStart={touch ? handleTouchStart : undefined}
+                  onTouchMove={touch ? handleTouchMove : undefined}
+                  onTouchEnd={touch ? handleTouchEnd : undefined}
                 >
                   <MessageContent
                     message={storeMessage || message}
@@ -436,7 +548,7 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
 
                   {/* Timestamp */}
                   <span
-                    className={`absolute bottom-1 text-[9px] leading-none select-none pointer-events-none
+                    className={`absolute bottom-1 text-[9px] leading-none pointer-events-none
                       ${isOwn ? "right-2 text-white/50" : "left-4 text-[var(--text-muted)]"}`}
                   >
                     {formatMessageTime(message.createdAt)}
