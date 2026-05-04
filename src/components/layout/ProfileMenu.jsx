@@ -64,7 +64,7 @@ function ProfileModal({ onClose }) {
       // If user picked a new image, upload to Cloudinary first
       if (avatarBase64) {
         toast.loading("Uploading photo...", { id: "avatar-upload" });
-        const { data } = await axios.post("/api/upload/avatar", { image: avatarBase64 });
+        const { data } = await axios.post("/upload/avatar", { image: avatarBase64 });
         toast.dismiss("avatar-upload");
         updatedForm.avatar = data.url;
       }
