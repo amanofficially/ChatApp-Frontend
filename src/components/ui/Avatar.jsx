@@ -32,7 +32,6 @@ function getColor(name) {
   return PALETTE[idx];
 }
 
-// Only allow real HTTPS URLs — reject base64 data URIs stored from old code
 function isValidAvatarUrl(url) {
   if (!url || typeof url !== "string") return false;
   // Allow real URLs (Cloudinary etc.)
