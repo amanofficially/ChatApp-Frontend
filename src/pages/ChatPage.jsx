@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Sidebar from "../components/layout/Sidebar";
 import ChatHeader from "../components/chat/ChatHeader";
 import MessageList from "../components/chat/MessageList";
@@ -29,6 +29,15 @@ export default function ChatPage() {
       fetchConversations();
     }
   }, [fetchConversations]);
+
+  // Listen for notification clicks — switch to chat view on mobile
+  useEffect(() => {
+    const handleOpenChat = () => {
+      setMobileView("chat");
+    };
+    window.addEventListener("cf-open-chat", handleOpenChat);
+    return () => window.removeEventListener("cf-open-chat", handleOpenChat);
+  }, []);
 
   // Handle Android/iOS hardware back button & browser back gesture
   useEffect(() => {
@@ -66,6 +75,13 @@ export default function ChatPage() {
     window.history.pushState({ chatPage: true }, "");
   };
 
+  // Logo click → go home (sidebar) on mobile, reset active conversation
+  const handleGoHome = useCallback(() => {
+    clearMessages();
+    setActiveConversation(null);
+    setMobileView("sidebar");
+  }, [clearMessages, setActiveConversation]);
+
   return (
     <div className="flex h-full overflow-hidden bg-[var(--bg-primary)]">
       {/* ── Sidebar ──
@@ -86,9 +102,7 @@ export default function ChatPage() {
       >
         <Sidebar
           onConversationSelect={openConversation}
-          onGoHome={() => {
-            setMobileView("sidebar");
-          }}
+          onGoHome={handleGoHome}
         />
       </div>
 
@@ -117,3 +131,4 @@ export default function ChatPage() {
     </div>
   );
 }
+

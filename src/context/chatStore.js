@@ -50,10 +50,16 @@ const useChatStore = create((set, get) => ({
       set({ conversations, loadingConversations: false });
 
       // Restore active conversation from sessionStorage on first load
+      // On mobile (narrow screen), always start at sidebar home — don't auto-restore
+      const isMobile = window.innerWidth < 768;
       const persistedId = getPersistedConvId();
-      if (persistedId && !get().activeConversation) {
+      if (persistedId && !get().activeConversation && !isMobile) {
         const conv = conversations.find((c) => c._id === persistedId);
-        if (conv) get().setActiveConversation(conv);
+        if (conv) {
+          get().setActiveConversation(conv);
+          // On mobile: don't auto-open chat on restore — stay on sidebar (home)
+          // The user can tap the conversation to open it
+        }
       }
     } catch (err) {
       set({ loadingConversations: false });

@@ -13,7 +13,11 @@ export default function InAppNotifications() {
   const handleClick = async (notif) => {
     dismissNotification(notif.id);
     const conv = conversations.find((c) => c._id === notif.conversationId);
-    if (conv) await setActiveConversation(conv);
+    if (conv) {
+      await setActiveConversation(conv);
+      // Tell ChatPage to switch to chat view on mobile
+      window.dispatchEvent(new CustomEvent("cf-open-chat", { detail: { conversationId: conv._id } }));
+    }
   };
 
   return (
