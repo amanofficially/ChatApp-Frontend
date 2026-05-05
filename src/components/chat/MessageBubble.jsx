@@ -367,62 +367,33 @@ function TickIcon({ status }) {
 }
 
 // ── FileActionMenu ─────────────────────────────────────────────────────────
-// Fixed: renders as a fixed-position modal overlay on mobile so z-index/clip never cuts it
-function FileActionMenu({ url, fileName, onClose, anchorRef }) {
+function FileActionMenu({ url, fileName, onClose }) {
   const ref = useRef();
-  const [style, setStyle] = useState({});
-
-  // Position menu near the anchor element
-  useEffect(() => {
-    if (anchorRef?.current) {
-      const rect = anchorRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const above = spaceBelow < 120;
-      setStyle({
-        position: "fixed",
-        left: Math.min(rect.left, window.innerWidth - 200),
-        top: above ? rect.top - 10 : rect.bottom + 8,
-        transform: above ? "translateY(-100%)" : "none",
-        zIndex: 9999,
-      });
-    }
-  }, [anchorRef]);
-
   useEffect(() => {
     const handler = (e) => {
-      if (
-        !ref.current?.contains(e.target) &&
-        !anchorRef?.current?.contains(e.target)
-      )
-        onClose();
+      if (!ref.current?.contains(e.target)) onClose();
     };
-    const t = setTimeout(() => {
+    setTimeout(() => {
       document.addEventListener("mousedown", handler);
       document.addEventListener("touchstart", handler, { passive: true });
     }, 50);
     return () => {
-      clearTimeout(t);
       document.removeEventListener("mousedown", handler);
       document.removeEventListener("touchstart", handler);
     };
-  }, [onClose, anchorRef]);
+  }, [onClose]);
 
   const isPdf = fileName?.toLowerCase().endsWith(".pdf");
 
   return (
     <div
       ref={ref}
+      className="absolute bottom-full mb-2 left-0 z-50 py-1.5 min-w-[180px] shadow-2xl rounded-2xl overflow-hidden"
       style={{
-        ...style,
         background: "var(--bg-secondary)",
         border: "1px solid var(--border)",
         animation: "contextMenuIn 0.16s ease-out",
-        boxShadow: "0 12px 40px rgba(0,0,0,0.25)",
-        borderRadius: "16px",
-        overflow: "hidden",
-        minWidth: "190px",
-        paddingTop: "6px",
-        paddingBottom: "6px",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.2)",
       }}
     >
       {isPdf && (
@@ -431,14 +402,10 @@ function FileActionMenu({ url, fileName, onClose, anchorRef }) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={onClose}
-          style={{ touchAction: "manipulation" }}
-          className="flex items-center gap-2.5 w-full px-4 py-3 text-sm
-            text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] active:bg-[var(--bg-tertiary)] transition-colors"
+          className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm
+            text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
         >
-          <ExternalLink
-            size={15}
-            className="text-[var(--text-muted)] flex-shrink-0"
-          />
+          <ExternalLink size={14} className="text-[var(--text-muted)]" />
           <span>Open PDF</span>
         </a>
       )}
@@ -446,14 +413,10 @@ function FileActionMenu({ url, fileName, onClose, anchorRef }) {
         href={url}
         download={fileName || true}
         onClick={onClose}
-        style={{ touchAction: "manipulation" }}
-        className="flex items-center gap-2.5 w-full px-4 py-3 text-sm
-          text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] active:bg-[var(--bg-tertiary)] transition-colors"
+        className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm
+          text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
       >
-        <Download
-          size={15}
-          className="text-[var(--text-muted)] flex-shrink-0"
-        />
+        <Download size={14} className="text-[var(--text-muted)]" />
         <span>Download</span>
       </a>
     </div>
@@ -461,43 +424,12 @@ function FileActionMenu({ url, fileName, onClose, anchorRef }) {
 }
 
 // ── MessageContent ─────────────────────────────────────────────────────────
-function MessageContent({ message, isOwn, onImageClick, onImageLongPress }) {
+function MessageContent({ message, isOwn, onImageClick }) {
   const [showFileActions, setShowFileActions] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
-  const fileBtnRef = useRef();
-
-  // Image: track touch so we can distinguish tap vs long-press without
-  // interfering with the parent bubble's long-press handler
-  const imgTouchTimer = useRef(null);
-  const imgTouchMoved = useRef(false);
-  const imgTouchStart = useRef(null);
 
   if (message.type === "image") {
-    const handleImgTouchStart = (e) => {
-      imgTouchMoved.current = false;
-      imgTouchStart.current = {
-        x: e.touches[0].clientX,
-        y: e.touches[0].clientY,
-      };
-      // Let parent bubble's long-press timer run — don't start a separate one here
-    };
-
-    const handleImgTouchMove = (e) => {
-      if (!imgTouchStart.current) return;
-      const dx = Math.abs(e.touches[0].clientX - imgTouchStart.current.x);
-      const dy = Math.abs(e.touches[0].clientY - imgTouchStart.current.y);
-      if (dx > 8 || dy > 8) imgTouchMoved.current = true;
-    };
-
-    const handleImgTouchEnd = (e) => {
-      // If it wasn't a clean tap, don't open lightbox
-      if (imgTouchMoved.current) return;
-      // Prevent the event bubbling up to parent bubble's onTouchEnd
-      e.stopPropagation();
-      onImageClick(message.content);
-    };
-
     return (
       <div className="relative group/img">
         {!imgLoaded && !imgError && (
@@ -513,12 +445,8 @@ function MessageContent({ message, isOwn, onImageClick, onImageLongPress }) {
           </div>
         )}
         {!imgError ? (
-          <div
-            role="button"
-            tabIndex={0}
-            onTouchStart={handleImgTouchStart}
-            onTouchMove={handleImgTouchMove}
-            onTouchEnd={handleImgTouchEnd}
+          // Single tap opens lightbox; long-press handled by parent bubble
+          <button
             onClick={(e) => {
               e.stopPropagation();
               onImageClick(message.content);
@@ -526,9 +454,6 @@ function MessageContent({ message, isOwn, onImageClick, onImageLongPress }) {
             style={{
               touchAction: "manipulation",
               display: imgLoaded ? "block" : "none",
-              cursor: "pointer",
-              WebkitUserSelect: "none",
-              userSelect: "none",
             }}
             className="rounded-xl overflow-hidden focus:outline-none active:opacity-80 relative"
           >
@@ -536,7 +461,6 @@ function MessageContent({ message, isOwn, onImageClick, onImageLongPress }) {
               src={message.content}
               alt="shared image"
               loading="lazy"
-              draggable={false}
               onLoad={() => setImgLoaded(true)}
               onError={() => {
                 setImgError(true);
@@ -549,11 +473,9 @@ function MessageContent({ message, isOwn, onImageClick, onImageLongPress }) {
                 minWidth: 120,
                 minHeight: 80,
                 display: "block",
-                WebkitTouchCallout: "none",
-                pointerEvents: "none",
               }}
             />
-            {/* Hover zoom overlay — desktop only */}
+            {/* Hover zoom overlay */}
             <div
               className="absolute inset-0 rounded-xl flex items-center justify-center
                 opacity-0 group-hover/img:opacity-100 transition-opacity"
@@ -566,7 +488,7 @@ function MessageContent({ message, isOwn, onImageClick, onImageLongPress }) {
                 <ZoomIn size={18} className="text-white" />
               </div>
             </div>
-          </div>
+          </button>
         ) : (
           <div
             className="rounded-xl flex items-center justify-center text-xs opacity-60 px-4 py-3"
@@ -582,24 +504,16 @@ function MessageContent({ message, isOwn, onImageClick, onImageLongPress }) {
   if (message.type === "file") {
     const fileName = message.fileName || "File";
     const url = message.content;
-    const isPdf = fileName.toLowerCase().endsWith(".pdf");
-
-    const handleFileTap = (e) => {
-      e.stopPropagation();
-      setShowFileActions((v) => !v);
-    };
-
     return (
       <div className="relative">
         <button
-          ref={fileBtnRef}
-          onClick={handleFileTap}
-          onTouchEnd={(e) => {
+          onClick={(e) => {
             e.stopPropagation();
+            setShowFileActions((v) => !v);
           }}
           style={{ touchAction: "manipulation" }}
           className={`flex items-center gap-3 min-w-[180px] max-w-[240px] p-1 rounded-xl
-            hover:opacity-80 active:opacity-70 transition-opacity text-left w-full
+            hover:opacity-80 transition-opacity text-left w-full
             ${isOwn ? "text-white" : "text-[var(--text-primary)]"}`}
         >
           <div
@@ -616,17 +530,15 @@ function MessageContent({ message, isOwn, onImageClick, onImageLongPress }) {
             <p
               className={`text-[11px] mt-0.5 ${isOwn ? "text-white/55" : "text-[var(--text-muted)]"}`}
             >
-              {isPdf ? "Tap to open · download" : "Tap to download"}
+              Tap to open · download
             </p>
           </div>
           <Download size={14} className="flex-shrink-0 opacity-50" />
         </button>
-
         {showFileActions && (
           <FileActionMenu
             url={url}
             fileName={fileName}
-            anchorRef={fileBtnRef}
             onClose={() => setShowFileActions(false)}
           />
         )}
@@ -755,8 +667,8 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
   //   • single tap → toggle context menu
   //   • long press → show reactions
   const handleTouchStart = useCallback((e) => {
-    // Only skip native anchor links; let everything else through
-    if (e.target.tagName === "A") return;
+    // Let native button/link elements handle themselves
+    if (["A", "BUTTON"].includes(e.target.tagName)) return;
 
     longFired.current = false;
     isLongPress.current = true;
@@ -771,10 +683,10 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
       isLongPress.current = false;
       window.getSelection()?.removeAllRanges();
       if (navigator.vibrate) navigator.vibrate(22);
-      // Open reaction bar first
+      // Open both reactions + context menu on long press
       setShowReactions(true);
       setShowMenu(false);
-      // Then open context menu slightly after
+      // After a tiny delay, also open the context menu
       setTimeout(() => {
         if (bubbleRef.current) {
           const rect = bubbleRef.current.getBoundingClientRect();
@@ -797,22 +709,23 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
 
   const handleTouchEnd = useCallback(
     (e) => {
-      // Buttons and links handle themselves
-      if (["A"].includes(e.target.tagName)) return;
+      if (["A", "BUTTON"].includes(e.target.tagName)) return;
 
       const wasPressAndHold = longFired.current;
       clearTimeout(longPressTimer.current);
       isLongPress.current = false;
       touchStartPos.current = null;
 
-      // Long press already handled — reactions + menu already open
+      // Long press already handled
       if (wasPressAndHold) return;
 
       const currentMessage = storeMessage || message;
 
-      // For IMAGE: tap is handled inside MessageContent's own onTouchEnd (e.stopPropagation)
-      // so this parent handler only fires for text/file bubbles on short tap
-      if (currentMessage.type === "image") return;
+      // Short tap on IMAGE → open lightbox
+      if (currentMessage.type === "image") {
+        setLightboxSrc(currentMessage.content);
+        return;
+      }
 
       // Short tap on TEXT/FILE → toggle context menu
       setShowMenu((prev) => {
