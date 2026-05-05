@@ -38,10 +38,7 @@ const DateDivider = memo(function DateDivider({ date }) {
 
 const UnreadDivider = memo(function UnreadDivider({ count }) {
   return (
-    <div
-      className="flex items-center gap-3 my-3 px-2"
-      data-unread-divider="true"
-    >
+    <div className="flex items-center gap-3 my-3 px-2" data-unread-divider="true">
       <div className="flex-1 h-px bg-[var(--brand)]/40" />
       <span className="text-[10px] font-bold text-[var(--brand)] bg-[var(--brand)]/10 px-3 py-1 rounded-full border border-[var(--brand)]/30 whitespace-nowrap">
         {count} new {count === 1 ? "message" : "messages"}
@@ -53,14 +50,13 @@ const UnreadDivider = memo(function UnreadDivider({ count }) {
 
 const MemoMessageBubble = memo(MessageBubble);
 
-export default function MessageList() {
+export default function MessageList({ selectionMode = false, selectedIds, onSelect }) {
   const { user } = useAuth();
   const loadingMessages      = useChatStore((s) => s.loadingMessages);
   const activeConversation   = useChatStore((s) => s.activeConversation);
   const convId = activeConversation?._id;
   const typingUsersForConv   = useChatStore((s) => s.typingUsers[convId] || []);
   const messages             = useChatStore((s) => convId ? (s.messagesByConv[convId] || []) : []);
-  // unread count snapshotted at the moment this conv was opened (before zeroing)
   const unreadSnapshot       = useChatStore((s) => convId ? (s.unreadSnapshotByConv[convId] || 0) : 0);
 
   const bottomRef     = useRef();
@@ -74,9 +70,6 @@ export default function MessageList() {
     [typingUsersForConv, user?._id],
   );
 
-  // ── Build grouped items ────────────────────────────────────
-  // The unread divider sits before the last `unreadSnapshot` messages
-  // that were sent by others (not me).
   const grouped = useMemo(() => {
     if (!messages.length) return [];
 
@@ -84,8 +77,6 @@ export default function MessageList() {
     const result = [];
     let lastDate = null;
 
-    // Find the index of the first "new" message:
-    // Count unreadSnapshot messages from others, starting from the end.
     let firstNewIdx = -1;
     if (unreadSnapshot > 0) {
       let found = 0;
@@ -96,50 +87,33 @@ export default function MessageList() {
             : messages[i].sender?.toString();
         if (sid !== myId) {
           found++;
-          if (found === unreadSnapshot) {
-            firstNewIdx = i;
-            break;
-          }
+          if (found === unreadSnapshot) { firstNewIdx = i; break; }
         }
       }
     }
 
     messages.forEach((msg, i) => {
-      // Insert unread divider before first new message
       if (i === firstNewIdx) {
-        result.push({
-          type: "unread-divider",
-          count: unreadSnapshot,
-          key: "unread-divider",
-        });
+        result.push({ type: "unread-divider", count: unreadSnapshot, key: "unread-divider" });
       }
-
       const msgDate = new Date(msg.createdAt);
       if (!lastDate || !isSameDay(lastDate, msgDate)) {
         result.push({ type: "divider", date: msg.createdAt, key: `div-${i}` });
         lastDate = msgDate;
       }
-
       const prev = messages[i - 1];
-      const senderId =
-        typeof msg.sender === "object" ? msg.sender._id : msg.sender;
-      const prevSenderId = prev
-        ? typeof prev.sender === "object" ? prev.sender._id : prev.sender
-        : null;
-
+      const senderId = typeof msg.sender === "object" ? msg.sender._id : msg.sender;
+      const prevSenderId = prev ? (typeof prev.sender === "object" ? prev.sender._id : prev.sender) : null;
       result.push({
-        type: "message",
-        msg,
+        type: "message", msg,
         showAvatar: !prev || prevSenderId !== senderId,
         senderId,
         key: msg._id || `msg-${i}`,
       });
     });
-
     return result;
   }, [messages, unreadSnapshot, user?._id]);
 
-  // ── Reset tracking on conversation change ─────────────────
   useLayoutEffect(() => {
     if (convId !== prevConvIdRef.current) {
       prevConvIdRef.current = convId;
@@ -148,28 +122,18 @@ export default function MessageList() {
     }
   }, [convId]);
 
-  // ── Scroll: to unread divider on open, else to bottom ─────
   useLayoutEffect(() => {
     if (!containerRef.current) return;
-
     if (justSwitchedRef.current && !loadingMessages && messages.length > 0) {
       justSwitchedRef.current = false;
       prevCountRef.current = messages.length;
-
-      const unreadEl = containerRef.current.querySelector(
-        "[data-unread-divider='true']",
-      );
-      if (unreadEl) {
-        unreadEl.scrollIntoView({ block: "center" });
-      } else {
-        containerRef.current.scrollTop = containerRef.current.scrollHeight;
-      }
+      const unreadEl = containerRef.current.querySelector("[data-unread-divider='true']");
+      if (unreadEl) unreadEl.scrollIntoView({ block: "center" });
+      else containerRef.current.scrollTop = containerRef.current.scrollHeight;
       return;
     }
-
     const isNew = messages.length > prevCountRef.current;
     prevCountRef.current = messages.length;
-
     if (isNew && bottomRef.current) {
       const c = containerRef.current;
       const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 250;
@@ -203,23 +167,14 @@ export default function MessageList() {
     >
       {grouped.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full gap-3 py-12">
-          <div className="w-16 h-16 rounded-2xl bg-[var(--bg-tertiary)] flex items-center justify-center text-3xl">
-            💬
-          </div>
-          <p className="text-sm text-[var(--text-muted)]">
-            No messages yet. Say hello!
-          </p>
+          <div className="w-16 h-16 rounded-2xl bg-[var(--bg-tertiary)] flex items-center justify-center text-3xl">💬</div>
+          <p className="text-sm text-[var(--text-muted)]">No messages yet. Say hello!</p>
         </div>
       )}
 
       {grouped.map((item) => {
-        if (item.type === "divider") {
-          return <DateDivider key={item.key} date={item.date} />;
-        }
-
-        if (item.type === "unread-divider") {
-          return <UnreadDivider key={item.key} count={item.count} />;
-        }
+        if (item.type === "divider") return <DateDivider key={item.key} date={item.date} />;
+        if (item.type === "unread-divider") return <UnreadDivider key={item.key} count={item.count} />;
 
         const { msg, showAvatar, senderId } = item;
         const isOwn =
@@ -229,9 +184,7 @@ export default function MessageList() {
         const senderObj =
           typeof msg.sender === "object"
             ? msg.sender
-            : activeConversation?.participants?.find(
-                (p) => p._id === senderId,
-              );
+            : activeConversation?.participants?.find((p) => p._id === senderId);
 
         return (
           <MemoMessageBubble
@@ -240,6 +193,9 @@ export default function MessageList() {
             isOwn={isOwn}
             showAvatar={showAvatar}
             sender={isOwn ? user : senderObj}
+            selectionMode={selectionMode}
+            isSelected={selectedIds?.has(msg._id) || false}
+            onSelect={onSelect}
           />
         );
       })}

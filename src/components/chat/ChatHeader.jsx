@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import {
   ArrowLeft, X, Mail, User, Phone, PhoneCall, Video,
-  MoreVertical, Trash2, Info,
+  MoreVertical, Trash2, Info, Copy, Check,
 } from "lucide-react";
 import Avatar from "../ui/Avatar";
 import { useSocket } from "../../context/SocketContext";
@@ -11,7 +11,7 @@ import { formatLastSeen } from "../../utils/helpers";
 import toast from "react-hot-toast";
 import axios from "axios";
 
-/* ── Info row in contact card ── */
+/* ── Info row ── */
 function InfoRow({ icon: Icon, label, value }) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-xl bg-[var(--bg-tertiary)]">
@@ -31,51 +31,35 @@ function ChatInfoPanel({ other, isOnline, onClose }) {
       <div className="card w-full max-w-md rounded-2xl p-5 sm:p-6 animate-bounce-in">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-[var(--text-primary)]">Contact Info</h2>
-          <button
-            onClick={onClose}
-            className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] transition"
-            style={{ touchAction: "manipulation" }}
-          >
+          <button onClick={onClose} className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] transition" style={{ touchAction: "manipulation" }}>
             <X size={18} />
           </button>
         </div>
-
         <div className="flex flex-col items-center text-center gap-3 mb-5">
           <Avatar user={other} size="xl" showStatus={false} />
           <div className="w-full">
-            <h3 className="text-lg font-semibold text-[var(--text-primary)] truncate">
-              {other.username || "Unknown"}
-            </h3>
-            <span className={`inline-block mt-1 text-xs font-medium px-2.5 py-1 rounded-full ${
-              isOnline ? "bg-green-500/10 text-green-500" : "bg-[var(--bg-tertiary)] text-[var(--text-muted)]"
-            }`}>
+            <h3 className="text-lg font-semibold text-[var(--text-primary)] truncate">{other.username || "Unknown"}</h3>
+            <span className={`inline-block mt-1 text-xs font-medium px-2.5 py-1 rounded-full ${isOnline ? "bg-green-500/10 text-green-500" : "bg-[var(--bg-tertiary)] text-[var(--text-muted)]"}`}>
               {isOnline ? "Online" : formatLastSeen(other.lastSeen)}
             </span>
           </div>
         </div>
-
         <div className="space-y-2 mb-5">
           <InfoRow icon={Mail} label="Email" value={other.email || "Not set"} />
           <InfoRow icon={Phone} label="Mobile" value={other.mobile || "Not set"} />
           <InfoRow icon={User} label="Bio" value={other.bio || "Hey! I'm using ChatFlow"} />
         </div>
-
-        <button onClick={onClose} className="w-full btn-primary" style={{ touchAction: "manipulation" }}>
-          Close
-        </button>
+        <button onClick={onClose} className="w-full btn-primary" style={{ touchAction: "manipulation" }}>Close</button>
       </div>
     </div>
   );
 }
 
-/* ── Delete confirm modal ── */
+/* ── Delete entire chat confirm ── */
 function DeleteChatModal({ username, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0">
-      <div
-        className="w-full max-w-sm rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border)] p-5 shadow-2xl"
-        style={{ animation: "slideUp 0.2s ease" }}
-      >
+      <div className="w-full max-w-sm rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border)] p-5 shadow-2xl" style={{ animation: "slideUp 0.2s ease" }}>
         <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto mb-4">
           <Trash2 size={22} className="text-red-400" />
         </div>
@@ -84,21 +68,31 @@ function DeleteChatModal({ username, onConfirm, onCancel }) {
           Your chat with <span className="font-semibold text-[var(--text-secondary)]">{username}</span> will be permanently removed.
         </p>
         <div className="flex gap-2.5">
-          <button
-            onClick={onCancel}
-            className="flex-1 h-11 rounded-xl text-sm font-medium border border-[var(--border)]
-              text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
-            style={{ touchAction: "manipulation" }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 h-11 rounded-xl text-sm font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors active:scale-95"
-            style={{ touchAction: "manipulation" }}
-          >
-            Delete
-          </button>
+          <button onClick={onCancel} className="flex-1 h-11 rounded-xl text-sm font-medium border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors" style={{ touchAction: "manipulation" }}>Cancel</button>
+          <button onClick={onConfirm} className="flex-1 h-11 rounded-xl text-sm font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors active:scale-95" style={{ touchAction: "manipulation" }}>Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Delete selected messages confirm ── */
+function DeleteSelectedModal({ count, onConfirm, onCancel }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0">
+      <div className="w-full max-w-sm rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border)] p-5 shadow-2xl" style={{ animation: "slideUp 0.2s ease" }}>
+        <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+          <Trash2 size={22} className="text-red-400" />
+        </div>
+        <h3 className="text-base font-bold text-[var(--text-primary)] text-center mb-1">
+          Delete {count} message{count !== 1 ? "s" : ""}?
+        </h3>
+        <p className="text-sm text-[var(--text-muted)] text-center mb-5">
+          Selected messages will be permanently deleted.
+        </p>
+        <div className="flex gap-2.5">
+          <button onClick={onCancel} className="flex-1 h-11 rounded-xl text-sm font-medium border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors" style={{ touchAction: "manipulation" }}>Cancel</button>
+          <button onClick={onConfirm} className="flex-1 h-11 rounded-xl text-sm font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors active:scale-95" style={{ touchAction: "manipulation" }}>Delete</button>
         </div>
       </div>
     </div>
@@ -111,11 +105,8 @@ function TypingStatus() {
     <span className="flex items-center gap-1.5">
       <span className="flex items-center gap-[3px]">
         {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            className="w-1 h-1 rounded-full bg-[var(--brand)]"
-            style={{ animation: "typingBounce 1.2s ease-in-out infinite", animationDelay: `${i * 0.18}s` }}
-          />
+          <span key={i} className="w-1 h-1 rounded-full bg-[var(--brand)]"
+            style={{ animation: "typingBounce 1.2s ease-in-out infinite", animationDelay: `${i * 0.18}s` }} />
         ))}
       </span>
       <span className="text-[11px] text-[var(--brand)] font-medium tracking-wide">typing</span>
@@ -124,13 +115,24 @@ function TypingStatus() {
 }
 
 /* ── ChatHeader ── */
-export default function ChatHeader({ conversation, onBack }) {
+export default function ChatHeader({
+  conversation,
+  onBack,
+  // Multi-select props from ChatPage
+  selectionMode = false,
+  selectedMessages = [],
+  selectedIds = [],
+  onCancelSelection,
+  onDeleteSelected,
+  onCopySelected,
+}) {
   const { user } = useAuth();
   const { onlineUsers } = useSocket();
   const typingUsers = useChatStore((s) => s.typingUsers);
   const [showInfo, setShowInfo] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] = useState(false);
   const menuRef = useRef(null);
 
   const other = useMemo(
@@ -142,6 +144,10 @@ export default function ChatHeader({ conversation, onBack }) {
   const isOtherTyping = (typingUsers[conversation?._id] || []).some(
     (id) => id !== user?._id?.toString(),
   );
+
+  const selCount = selectedIds.length;
+  const canCopy = selCount > 0 && selectedMessages.every((m) => m.type === "text");
+  const canDelete = selCount > 0;
 
   useEffect(() => {
     const handler = (e) => {
@@ -158,11 +164,7 @@ export default function ChatHeader({ conversation, onBack }) {
   }, [menuOpen]);
 
   const handleDemoCall = (type) => {
-    toast.success(
-      type === "voice"
-        ? `Calling ${other.username || "user"}…`
-        : `Starting video call with ${other.username || "user"}…`,
-    );
+    toast.success(type === "voice" ? `Calling ${other.username || "user"}…` : `Starting video call with ${other.username || "user"}…`);
   };
 
   const handleDeleteChat = async () => {
@@ -179,6 +181,77 @@ export default function ChatHeader({ conversation, onBack }) {
     }
   };
 
+  const handleCopySelected = () => {
+    const text = selectedMessages
+      .filter((m) => m.type === "text")
+      .map((m) => m.content)
+      .join("\n");
+    navigator.clipboard.writeText(text)
+      .then(() => toast.success(`Copied ${selCount} message${selCount !== 1 ? "s" : ""}`))
+      .catch(() => toast.error("Copy failed"));
+    onCopySelected?.();
+  };
+
+  // ── Selection toolbar ──────────────────────────────────────────────────────
+  if (selectionMode) {
+    return (
+      <>
+        {showDeleteSelectedConfirm && (
+          <DeleteSelectedModal
+            count={selCount}
+            onConfirm={() => { setShowDeleteSelectedConfirm(false); onDeleteSelected?.(); }}
+            onCancel={() => setShowDeleteSelectedConfirm(false)}
+          />
+        )}
+        <header
+          className="h-[60px] sm:h-16 px-2 sm:px-4 border-b border-[var(--brand)]/30 flex items-center justify-between flex-shrink-0"
+          style={{ background: "var(--bg-secondary)", animation: "slideDown 0.18s ease" }}
+        >
+          {/* Left: cancel + count */}
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              onClick={onCancelSelection}
+              className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] transition active:scale-90"
+              style={{ touchAction: "manipulation" }}
+            >
+              <X size={20} />
+            </button>
+            <span className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
+              {selCount} selected
+            </span>
+          </div>
+
+          {/* Right: Copy + Delete */}
+          <div className="flex items-center gap-1">
+            {canCopy && (
+              <button
+                onClick={handleCopySelected}
+                className="flex items-center gap-1.5 h-9 px-3 rounded-xl text-sm font-medium text-[var(--brand)] hover:bg-[var(--brand)]/10 transition active:scale-95"
+                style={{ touchAction: "manipulation" }}
+                title="Copy selected"
+              >
+                <Copy size={16} />
+                <span className="hidden sm:inline">Copy</span>
+              </button>
+            )}
+            {canDelete && (
+              <button
+                onClick={() => setShowDeleteSelectedConfirm(true)}
+                className="flex items-center gap-1.5 h-9 px-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition active:scale-95"
+                style={{ touchAction: "manipulation" }}
+                title="Delete selected"
+              >
+                <Trash2 size={16} />
+                <span className="hidden sm:inline">Delete</span>
+              </button>
+            )}
+          </div>
+        </header>
+      </>
+    );
+  }
+
+  // ── Normal header ──────────────────────────────────────────────────────────
   return (
     <>
       {showInfo && <ChatInfoPanel other={other} isOnline={isOnline} onClose={() => setShowInfo(false)} />}
@@ -191,8 +264,6 @@ export default function ChatHeader({ conversation, onBack }) {
       )}
 
       <header className="h-[60px] sm:h-16 px-2 sm:px-4 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-between flex-shrink-0">
-
-        {/* Left: back + avatar + name */}
         <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
           <button
             onClick={onBack}
@@ -201,7 +272,6 @@ export default function ChatHeader({ conversation, onBack }) {
           >
             <ArrowLeft size={20} />
           </button>
-
           <button
             onClick={() => setShowInfo(true)}
             className="flex items-center gap-2 min-w-0 flex-1 text-left hover:opacity-90 transition py-1"
@@ -225,7 +295,6 @@ export default function ChatHeader({ conversation, onBack }) {
           </button>
         </div>
 
-        {/* Right: action buttons */}
         <div className="flex items-center gap-0.5 ml-1 flex-shrink-0">
           <button
             onClick={() => handleDemoCall("voice")}
@@ -244,7 +313,6 @@ export default function ChatHeader({ conversation, onBack }) {
             <Video size={17} />
           </button>
 
-          {/* 3-dot menu */}
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((v) => !v)}
@@ -255,17 +323,14 @@ export default function ChatHeader({ conversation, onBack }) {
             >
               <MoreVertical size={17} />
             </button>
-
             {menuOpen && (
               <div
-                className="absolute right-0 top-full mt-1.5 min-w-[175px] rounded-2xl overflow-hidden
-                  shadow-xl border border-[var(--border)] bg-[var(--bg-secondary)] py-1 z-50"
+                className="absolute right-0 top-full mt-1.5 min-w-[175px] rounded-2xl overflow-hidden shadow-xl border border-[var(--border)] bg-[var(--bg-secondary)] py-1 z-50"
                 style={{ animation: "slideUp 0.12s ease" }}
               >
                 <button
                   onClick={() => { setShowInfo(true); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm
-                    text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors text-left"
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors text-left"
                   style={{ touchAction: "manipulation" }}
                 >
                   <Info size={15} className="text-[var(--text-muted)]" />
@@ -274,8 +339,7 @@ export default function ChatHeader({ conversation, onBack }) {
                 <div className="my-1 border-t border-[var(--border)] mx-3" />
                 <button
                   onClick={() => { setShowDeleteConfirm(true); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm
-                    text-red-400 hover:bg-red-500/10 transition-colors text-left"
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition-colors text-left"
                   style={{ touchAction: "manipulation" }}
                 >
                   <Trash2 size={15} />

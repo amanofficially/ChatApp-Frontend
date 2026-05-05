@@ -6,6 +6,8 @@ import MessageInput from "../components/chat/MessageInput";
 import EmptyChat from "../components/chat/EmptyChat";
 import useChatStore from "../context/chatStore";
 import { useSocketEvents } from "../hooks/useSocketEvents";
+import axios from "axios";
+import toast from "react-hot-toast";
 
 export default function ChatPage() {
   const activeConversation = useChatStore((s) => s.activeConversation);
@@ -13,15 +15,64 @@ export default function ChatPage() {
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const fetchConversations = useChatStore((s) => s.fetchConversations);
 
-  // On mobile:
-  //   - mobileView="sidebar" → show sidebar full-width (default/home)
-  //   - mobileView="chat"    → show chat panel full-width
   const [mobileView, setMobileView] = useState("sidebar");
 
-  // Activate all real-time socket listeners
+  // ── Multi-select state ────────────────────────────────────────────────────
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
+  const convId = activeConversation?._id;
+  const messages = useChatStore((s) => convId ? (s.messagesByConv[convId] || []) : []);
+  const selectedMessages = messages.filter((m) => selectedIds.has(m._id));
+
+  // Toggle a single message
+  const handleSelect = useCallback((id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      // Auto enter/exit selection mode
+      setSelectionMode(next.size > 0);
+      return next;
+    });
+  }, []);
+
+  // Cancel selection
+  const handleCancelSelection = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  // Copy selected text messages
+  const handleCopySelected = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  // Delete selected — optimistic + API
+  const handleDeleteSelected = useCallback(async () => {
+    const ids = [...selectedIds];
+    const removeMessage = useChatStore.getState().removeMessage;
+    ids.forEach((id) => removeMessage(id, convId));
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    try {
+      await Promise.all(ids.map((id) => axios.delete(`/messages/${id}`)));
+      toast.success(`Deleted ${ids.length} message${ids.length !== 1 ? "s" : ""}`);
+    } catch {
+      toast.error("Some messages could not be deleted");
+    }
+  }, [selectedIds, convId]);
+
+  // Reset selection when conversation changes
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, [convId]);
+
+  // ── Socket + fetch ────────────────────────────────────────────────────────
   useSocketEvents();
 
-  // Fetch conversations once on mount
   const didFetch = useRef(false);
   useEffect(() => {
     if (!didFetch.current) {
@@ -30,105 +81,87 @@ export default function ChatPage() {
     }
   }, [fetchConversations]);
 
-  // Listen for notification clicks — switch to chat view on mobile
   useEffect(() => {
-    const handleOpenChat = () => {
-      setMobileView("chat");
-    };
+    const handleOpenChat = () => setMobileView("chat");
     window.addEventListener("cf-open-chat", handleOpenChat);
     return () => window.removeEventListener("cf-open-chat", handleOpenChat);
   }, []);
 
-  // Handle Android/iOS hardware back button & browser back gesture
   useEffect(() => {
-    // Push an extra history entry so the first back press is caught here
     window.history.pushState({ chatPage: true }, "");
-
     const handlePopState = (e) => {
-      if (mobileView === "chat") {
-        // Back from chat → go to sidebar (home), NOT to /auth
+      if (selectionMode) {
+        e.preventDefault?.();
+        handleCancelSelection();
+        window.history.pushState({ chatPage: true }, "");
+      } else if (mobileView === "chat") {
         e.preventDefault?.();
         clearMessages();
         setActiveConversation(null);
         setMobileView("sidebar");
-        // Re-push so next back press is also caught
         window.history.pushState({ chatPage: true }, "");
       } else {
-        // Already on sidebar (home), re-push to prevent leaving the app
         window.history.pushState({ chatPage: true }, "");
       }
     };
-
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [mobileView, clearMessages, setActiveConversation]);
+  }, [mobileView, selectionMode, clearMessages, setActiveConversation, handleCancelSelection]);
 
-  const openConversation = (conv) => {
-    setMobileView("chat");
-  };
+  const openConversation = () => setMobileView("chat");
 
   const handleBack = () => {
+    if (selectionMode) { handleCancelSelection(); return; }
     clearMessages();
     setActiveConversation(null);
     setMobileView("sidebar");
-    // Re-push history entry so next back is caught too
     window.history.pushState({ chatPage: true }, "");
   };
 
-  // Logo click → go home (sidebar) on mobile, reset active conversation
   const handleGoHome = useCallback(() => {
+    handleCancelSelection();
     clearMessages();
     setActiveConversation(null);
     setMobileView("sidebar");
-  }, [clearMessages, setActiveConversation]);
+  }, [clearMessages, setActiveConversation, handleCancelSelection]);
 
   return (
     <div className="flex h-full overflow-hidden bg-[var(--bg-primary)]">
-      {/* ── Sidebar ──
-          Desktop: always visible, fixed width
-          Mobile: full-width when mobileView==="sidebar", hidden when mobileView==="chat"
-      */}
       <div
-        className={`
-          flex-shrink-0
-          md:w-80 md:flex md:flex-col
-          ${
-            mobileView === "sidebar"
-              ? "flex flex-col w-full md:w-80"
-              : "hidden md:flex md:flex-col"
-          }
-          h-full
-        `}
+        className={`flex-shrink-0 md:w-80 md:flex md:flex-col
+          ${mobileView === "sidebar" ? "flex flex-col w-full md:w-80" : "hidden md:flex md:flex-col"}
+          h-full`}
       >
-        <Sidebar
-          onConversationSelect={openConversation}
-          onGoHome={handleGoHome}
-        />
+        <Sidebar onConversationSelect={openConversation} onGoHome={handleGoHome} />
       </div>
 
-      {/* ── Main chat area ──
-          Desktop: always visible
-          Mobile: full-width when mobileView==="chat", hidden otherwise
-      */}
       <main
-        className={`
-          flex-1 flex flex-col min-w-0 h-full relative
-          ${mobileView === "chat" ? "flex" : "hidden md:flex"}
-        `}
+        className={`flex-1 flex flex-col min-w-0 h-full relative
+          ${mobileView === "chat" ? "flex" : "hidden md:flex"}`}
       >
         {activeConversation ? (
           <>
-            <ChatHeader conversation={activeConversation} onBack={handleBack} />
-            <MessageList />
-            <MessageInput />
+            <ChatHeader
+              conversation={activeConversation}
+              onBack={handleBack}
+              selectionMode={selectionMode}
+              selectedMessages={selectedMessages}
+              selectedIds={[...selectedIds]}
+              onCancelSelection={handleCancelSelection}
+              onDeleteSelected={handleDeleteSelected}
+              onCopySelected={handleCopySelected}
+            />
+            <MessageList
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onSelect={handleSelect}
+            />
+            {!selectionMode && <MessageInput />}
           </>
         ) : (
-          <>
-            <EmptyChat />
-          </>
+          <EmptyChat />
         )}
       </main>
     </div>
   );
 }
-
