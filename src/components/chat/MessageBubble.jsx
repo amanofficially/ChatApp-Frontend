@@ -44,11 +44,12 @@ function useOutsideClick(ref, onClose, anchorRef = null) {
 }
 
 // ── ImageLightbox ──────────────────────────────────────────────────────────
-// Fixed: no border, proper centered modal, clean backdrop
 function ImageLightbox({ src, onClose }) {
   const [loaded, setLoaded] = useState(false);
   const [scale, setScale] = useState(1);
+  const [dragging, setDragging] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  const dragStart = useRef(null);
   const imgRef = useRef();
 
   useEffect(() => {
@@ -72,9 +73,9 @@ function ImageLightbox({ src, onClose }) {
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center"
       style={{
-        background: "rgba(0,0,0,0.92)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
+        background: "rgba(0,0,0,0.93)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -85,7 +86,7 @@ function ImageLightbox({ src, onClose }) {
         className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 z-10"
         style={{
           background:
-            "linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)",
+            "linear-gradient(to bottom, rgba(0,0,0,0.6), transparent)",
         }}
       >
         <a
@@ -95,20 +96,20 @@ function ImageLightbox({ src, onClose }) {
           rel="noopener noreferrer"
           className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-white text-xs font-medium transition-all active:scale-95"
           style={{
-            background: "rgba(255,255,255,0.14)",
+            background: "rgba(255,255,255,0.12)",
             backdropFilter: "blur(8px)",
             touchAction: "manipulation",
           }}
           onClick={(e) => e.stopPropagation()}
         >
           <Download size={14} />
-          <span>Save</span>
+          <span className="hidden sm:inline">Save</span>
         </a>
 
         <button
           className="w-9 h-9 flex items-center justify-center rounded-full text-white transition-all active:scale-90"
           style={{
-            background: "rgba(255,255,255,0.14)",
+            background: "rgba(255,255,255,0.12)",
             backdropFilter: "blur(8px)",
             touchAction: "manipulation",
           }}
@@ -121,45 +122,34 @@ function ImageLightbox({ src, onClose }) {
       {/* Loading skeleton */}
       {!loaded && (
         <div
-          className="rounded-2xl animate-pulse flex items-center justify-center"
-          style={{
-            width: 200,
-            height: 160,
-            background: "rgba(255,255,255,0.07)",
-          }}
-        >
-          <div className="w-8 h-8 rounded-full border-2 border-white/20 border-t-white/60 animate-spin" />
-        </div>
+          className="w-48 h-48 rounded-2xl animate-pulse"
+          style={{ background: "rgba(255,255,255,0.08)" }}
+        />
       )}
 
-      {/* Image — no border, no outline, clean */}
+      {/* Image */}
       <img
         ref={imgRef}
         src={src}
         alt="full size"
         onLoad={() => setLoaded(true)}
         onDoubleClick={handleDoubleTap}
-        draggable={false}
-        className="object-contain select-none transition-transform duration-200"
+        className="rounded-2xl shadow-2xl object-contain transition-transform duration-200 select-none"
         style={{
-          maxWidth: "min(94vw, 900px)",
-          maxHeight: "85dvh",
+          maxWidth: "min(92vw, 880px)",
+          maxHeight: "82dvh",
           opacity: loaded ? 1 : 0,
           transform: `scale(${scale}) translate(${pos.x}px, ${pos.y}px)`,
           cursor: scale > 1 ? "grab" : "zoom-in",
           WebkitTouchCallout: "default",
-          // no border, no borderRadius, no outline — pure image
-          border: "none",
-          outline: "none",
-          boxShadow: "0 8px 60px rgba(0,0,0,0.6)",
-          borderRadius: "12px",
         }}
         onClick={(e) => e.stopPropagation()}
       />
 
+      {/* Double-tap hint */}
       {loaded && scale === 1 && (
-        <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[11px] text-white/35 select-none pointer-events-none">
-          Double-tap to zoom · tap outside to close
+        <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[11px] text-white/40 select-none pointer-events-none">
+          Double-tap to zoom
         </p>
       )}
     </div>
@@ -170,9 +160,6 @@ function ImageLightbox({ src, onClose }) {
 function ContextMenu({
   isOwn,
   hasText,
-  messageType,
-  messageContent,
-  fileName,
   onCopy,
   onDelete,
   onClose,
@@ -181,9 +168,6 @@ function ContextMenu({
 }) {
   const ref = useRef();
   useOutsideClick(ref, onClose, anchorRef);
-
-  const isImage = messageType === "image";
-  const isFile = messageType === "file";
 
   return (
     <div
@@ -194,14 +178,9 @@ function ContextMenu({
     >
       {/* Arrow */}
       <div
-        className={`context-menu-arrow ${isOwn ? "right-3" : "left-3"} ${
-          position === "above"
-            ? "bottom-[-6px] border-t-[var(--bg-secondary)]"
-            : "top-[-6px] border-b-[var(--bg-secondary)]"
-        }`}
+        className={`context-menu-arrow ${isOwn ? "right-3" : "left-3"} ${position === "above" ? "bottom-[-6px] border-t-[var(--bg-secondary)]" : "top-[-6px] border-b-[var(--bg-secondary)]"}`}
       />
 
-      {/* Copy text — only for text messages */}
       {hasText && onCopy && (
         <button
           onMouseDown={(e) => {
@@ -224,34 +203,6 @@ function ContextMenu({
         </button>
       )}
 
-      {/* Download — for images and files */}
-      {(isImage || isFile) && (
-        <a
-          href={messageContent}
-          download={fileName || true}
-          target="_blank"
-          rel="noopener noreferrer"
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          onClick={(e) => e.stopPropagation()}
-          style={{ touchAction: "manipulation" }}
-          className="context-menu-item"
-        >
-          <div
-            className="context-menu-icon"
-            style={{
-              background: "color-mix(in srgb, var(--brand) 12%, transparent)",
-            }}
-          >
-            <Download size={13} style={{ color: "var(--brand)" }} />
-          </div>
-          <span>Download</span>
-        </a>
-      )}
-
-      {/* Delete — own messages only */}
       {isOwn && (
         <button
           onMouseDown={(e) => {
@@ -445,7 +396,6 @@ function MessageContent({ message, isOwn, onImageClick }) {
           </div>
         )}
         {!imgError ? (
-          // Single tap opens lightbox; long-press handled by parent bubble
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -475,10 +425,10 @@ function MessageContent({ message, isOwn, onImageClick }) {
                 display: "block",
               }}
             />
-            {/* Hover zoom overlay */}
+            {/* Zoom overlay on hover */}
             <div
               className="absolute inset-0 rounded-xl flex items-center justify-center
-                opacity-0 group-hover/img:opacity-100 transition-opacity"
+              opacity-0 group-hover/img:opacity-100 transition-opacity"
               style={{ background: "rgba(0,0,0,0.25)" }}
             >
               <div
@@ -561,7 +511,6 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
   const isLongPress = useRef(false);
   const longFired = useRef(false);
   const touchStartPos = useRef(null);
-  const didOpenLightbox = useRef(false); // track if tap already opened lightbox
   const menuBtnRef = useRef();
   const bubbleRef = useRef();
 
@@ -594,6 +543,7 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
     setShowMenu(false);
   }, []);
   const openMenu = useCallback(() => {
+    // Determine if menu should appear above or below based on screen position
     if (bubbleRef.current) {
       const rect = bubbleRef.current.getBoundingClientRect();
       setMenuPosition(rect.top > 180 ? "above" : "below");
@@ -659,43 +609,27 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
     [message._id, myUserId, reactions],
   );
 
-  // ── Touch handlers ─────────────────────────────────────────────────────
-  // For IMAGE bubbles on mobile:
-  //   • single tap → open lightbox
-  //   • long press → show reactions + context menu (with Delete + Download)
-  // For TEXT/FILE bubbles on mobile:
-  //   • single tap → toggle context menu
-  //   • long press → show reactions
-  const handleTouchStart = useCallback((e) => {
-    // Let native button/link elements handle themselves
-    if (["A", "BUTTON"].includes(e.target.tagName)) return;
+  // Touch handlers for long-press
+  const handleTouchStart = useCallback(
+    (e) => {
+      if (["IMG", "A", "BUTTON"].includes(e.target.tagName)) return;
+      longFired.current = false;
+      isLongPress.current = true;
+      touchStartPos.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+      };
 
-    longFired.current = false;
-    isLongPress.current = true;
-    didOpenLightbox.current = false;
-    touchStartPos.current = {
-      x: e.touches[0].clientX,
-      y: e.touches[0].clientY,
-    };
-
-    longPressTimer.current = setTimeout(() => {
-      longFired.current = true;
-      isLongPress.current = false;
-      window.getSelection()?.removeAllRanges();
-      if (navigator.vibrate) navigator.vibrate(22);
-      // Open both reactions + context menu on long press
-      setShowReactions(true);
-      setShowMenu(false);
-      // After a tiny delay, also open the context menu
-      setTimeout(() => {
-        if (bubbleRef.current) {
-          const rect = bubbleRef.current.getBoundingClientRect();
-          setMenuPosition(rect.top > 180 ? "above" : "below");
-        }
-        setShowMenu(true);
-      }, 80);
-    }, LONG_PRESS_MS);
-  }, []);
+      longPressTimer.current = setTimeout(() => {
+        longFired.current = true;
+        isLongPress.current = false;
+        window.getSelection()?.removeAllRanges();
+        if (navigator.vibrate) navigator.vibrate(20);
+        openReactions();
+      }, LONG_PRESS_MS);
+    },
+    [openReactions],
+  );
 
   const handleTouchMove = useCallback((e) => {
     if (!isLongPress.current || !touchStartPos.current) return;
@@ -707,39 +641,20 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
     }
   }, []);
 
-  const handleTouchEnd = useCallback(
-    (e) => {
-      if (["A", "BUTTON"].includes(e.target.tagName)) return;
-
-      const wasPressAndHold = longFired.current;
-      clearTimeout(longPressTimer.current);
-      isLongPress.current = false;
-      touchStartPos.current = null;
-
-      // Long press already handled
-      if (wasPressAndHold) return;
-
-      const currentMessage = storeMessage || message;
-
-      // Short tap on IMAGE → open lightbox
-      if (currentMessage.type === "image") {
-        setLightboxSrc(currentMessage.content);
-        return;
-      }
-
-      // Short tap on TEXT/FILE → toggle context menu
-      setShowMenu((prev) => {
-        if (prev) return false;
-        setShowReactions(false);
-        if (bubbleRef.current) {
-          const rect = bubbleRef.current.getBoundingClientRect();
-          setMenuPosition(rect.top > 180 ? "above" : "below");
-        }
-        return true;
-      });
-    },
-    [storeMessage, message],
-  );
+  const handleTouchEnd = useCallback((e) => {
+    if (["IMG", "A", "BUTTON"].includes(e.target.tagName)) return;
+    const wasPressAndHold = longFired.current;
+    clearTimeout(longPressTimer.current);
+    isLongPress.current = false;
+    touchStartPos.current = null;
+    if (wasPressAndHold) return;
+    // Short tap → context menu
+    setShowMenu((prev) => {
+      if (prev) return false;
+      setShowReactions(false);
+      return true;
+    });
+  }, []);
 
   if (isDeleting) return null;
 
@@ -782,11 +697,9 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
   }
 
   const touch = isTouch();
-  const currentMessage = storeMessage || message;
 
   return (
     <>
-      {/* Lightbox — rendered at root level so it's truly centered */}
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
@@ -858,14 +771,14 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
                     break-words whitespace-pre-wrap animate-slide-up`}
                   style={{
                     paddingBottom: "1.25rem",
-                    minWidth: currentMessage.type === "file" ? "180px" : "60px",
+                    minWidth: message.type === "file" ? "180px" : "60px",
                   }}
                   onTouchStart={touch ? handleTouchStart : undefined}
                   onTouchMove={touch ? handleTouchMove : undefined}
                   onTouchEnd={touch ? handleTouchEnd : undefined}
                 >
                   <MessageContent
-                    message={currentMessage}
+                    message={storeMessage || message}
                     isOwn={isOwn}
                     onImageClick={setLightboxSrc}
                   />
@@ -892,10 +805,7 @@ export default function MessageBubble({ message, isOwn, showAvatar, sender }) {
                   {showMenu && (
                     <ContextMenu
                       isOwn={isOwn}
-                      hasText={currentMessage.type === "text"}
-                      messageType={currentMessage.type}
-                      messageContent={currentMessage.content}
-                      fileName={currentMessage.fileName}
+                      hasText={message.type === "text"}
                       onCopy={handleCopy}
                       onDelete={handleDelete}
                       onClose={closeAll}
