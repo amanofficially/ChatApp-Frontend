@@ -13,6 +13,9 @@ import {
 } from "lucide-react";
 import ThemeToggle from "../components/ui/ThemeToggle";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MOBILE_RE = /^\d{10}$/;
+
 export default function AuthPage() {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({
@@ -28,7 +31,6 @@ export default function AuthPage() {
   const { login, signup, user } = useAuth();
   const navigate = useNavigate();
 
-  // If already logged in, redirect away — prevents back-button to /auth
   useEffect(() => {
     if (user) navigate("/chat", { replace: true });
   }, [user, navigate]);
@@ -36,32 +38,43 @@ export default function AuthPage() {
   const handleChange = (e) =>
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
+  const validate = () => {
+    if (!EMAIL_RE.test(form.email.trim())) {
+      toast.error("Enter a valid email address");
+      return false;
+    }
+    if (form.password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return false;
+    }
+    if (mode === "signup") {
+      if (!form.username.trim()) {
+        toast.error("Username is required");
+        return false;
+      }
+      if (form.password !== form.confirmPassword) {
+        toast.error("Passwords do not match");
+        return false;
+      }
+      if (form.mobile && !MOBILE_RE.test(form.mobile.trim())) {
+        toast.error("Mobile number must be exactly 10 digits");
+        return false;
+      }
+    }
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!validate()) return;
     setLoading(true);
     try {
       if (mode === "login") {
         await login(form.email, form.password);
       } else {
-        if (!form.username.trim()) {
-          toast.error("Username is required");
-          setLoading(false);
-          return;
-        }
-        if (form.password !== form.confirmPassword) {
-          toast.error("Passwords do not match");
-          setLoading(false);
-          return;
-        }
-        if (form.password.length < 6) {
-          toast.error("Password must be at least 6 characters");
-          setLoading(false);
-          return;
-        }
         await signup(form.username, form.email, form.password, form.mobile);
       }
       toast.success("Welcome to ChatFlow! 🎉");
-      // replace:true removes /auth from history stack so back button can't return here
       navigate("/chat", { replace: true });
     } catch (err) {
       toast.error(
@@ -159,8 +172,13 @@ export default function AuthPage() {
                   type="tel"
                   name="mobile"
                   value={form.mobile}
-                  onChange={handleChange}
-                  placeholder="Mobile number"
+                  onChange={(e) => {
+                    // allow digits only, max 10
+                    const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                    setForm((f) => ({ ...f, mobile: val }));
+                  }}
+                  placeholder="Mobile number (10 digits)"
+                  maxLength={10}
                   autoComplete="tel"
                   className="input-field pl-10"
                 />
