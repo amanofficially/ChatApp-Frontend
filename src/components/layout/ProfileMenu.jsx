@@ -353,32 +353,29 @@ export default function ProfileMenu() {
         {open && (
           <div className="absolute bottom-full left-3 right-3 mb-2 card py-1.5 animate-float-up z-50">
             <button
-              onClick={() => {
-                setOpen(false);
-                setShowProfile(true);
-              }}
-              className="sidebar-item w-full text-left gap-3 text-sm"
+              onClick={() => { setOpen(false); setShowProfile(true); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-left hover:bg-[var(--bg-tertiary)] transition-colors duration-150 active:scale-[0.98]"
+              style={{ touchAction: "manipulation" }}
             >
-              <User size={16} className="text-[var(--text-muted)]" />
-              <span className="text-[var(--text-secondary)]">View Profile</span>
+              <User size={16} className="text-[var(--text-muted)] flex-shrink-0" />
+              <span className="text-[var(--text-secondary)] font-medium">View Profile</span>
             </button>
             <button
-              onClick={() => {
-                setOpen(false);
-                setShowSettings(true);
-              }}
-              className="sidebar-item w-full text-left gap-3 text-sm"
+              onClick={() => { setOpen(false); setShowSettings(true); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-left hover:bg-[var(--bg-tertiary)] transition-colors duration-150 active:scale-[0.98]"
+              style={{ touchAction: "manipulation" }}
             >
-              <Settings size={16} className="text-[var(--text-muted)]" />
-              <span className="text-[var(--text-secondary)]">Settings</span>
+              <Settings size={16} className="text-[var(--text-muted)] flex-shrink-0" />
+              <span className="text-[var(--text-secondary)] font-medium">Settings</span>
             </button>
             <div className="mx-3 my-1 h-px bg-[var(--border)]" />
             <button
               onClick={handleLogout}
-              className="sidebar-item w-full text-left gap-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-left text-red-500 hover:bg-red-500/8 transition-colors duration-150 active:scale-[0.98]"
+              style={{ touchAction: "manipulation" }}
             >
-              <LogOut size={16} />
-              <span>Sign out</span>
+              <LogOut size={16} className="flex-shrink-0" />
+              <span className="font-medium">Sign out</span>
             </button>
           </div>
         )}

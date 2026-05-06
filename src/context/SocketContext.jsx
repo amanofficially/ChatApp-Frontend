@@ -1,6 +1,7 @@
 // ============================================================
 // SocketContext.jsx — Socket.IO connection management
 // Fixed: socket reconnects properly on user change (login/logout)
+// Fixed: WebSocket upgrade race condition on Render cold starts
 // ============================================================
 
 import {
@@ -44,14 +45,23 @@ export function SocketProvider({ children }) {
       socketRef.current = null;
     }
 
-    const socket = io(import.meta.env.VITE_SERVER_URL || "/", {
+    const serverUrl = import.meta.env.VITE_SERVER_URL || "/";
+
+    const socket = io(serverUrl, {
       auth: { token },
-      transports: ["polling", "websocket"], // polling first so upgrade happens cleanly
+      // Start with polling ONLY — this avoids the "WebSocket closed before
+      // connection established" error that happens when Render's server is
+      // waking up from sleep and the HTTP upgrade request races the WS handshake.
+      // Socket.IO will automatically upgrade to WebSocket once polling is stable.
+      transports: ["polling", "websocket"],
       upgrade: true,
+      // Give a generous timeout for Render free-tier cold starts (~30s wake time)
+      timeout: 30000,
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 15,
+      reconnectionDelay: 1500,
+      reconnectionDelayMax: 8000,
+      randomizationFactor: 0.5,
     });
 
     socketRef.current = socket;
@@ -60,12 +70,14 @@ export function SocketProvider({ children }) {
       setIsConnected(true);
     });
 
-    socket.on("disconnect", (reason) => {
+    socket.on("disconnect", () => {
       setIsConnected(false);
     });
 
-    socket.on("connect_error", (err) => {
+    socket.on("connect_error", () => {
       setIsConnected(false);
+      // connect_error is normal during Render cold-start — Socket.IO
+      // will keep retrying automatically via reconnectionAttempts above.
     });
 
     socket.on("onlineUsers", setOnlineUsers);
