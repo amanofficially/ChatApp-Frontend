@@ -74,8 +74,12 @@ function TypingStatus() {
 /* ── ChatHeader ── */
 export default function ChatHeader({
   conversation, onBack,
+  // Multi-select mode
   selectionMode = false, selectedMessages = [], selectedIds = [],
   onCancelSelection, onDeleteSelected, onCopySelected,
+  // Single-select mode (one bubble tapped on mobile)
+  singleSelectMessage = null,   // the message object, or null
+  onCancelSingleSelect,         // () => void
 }) {
   const { user } = useAuth();
   const { onlineUsers } = useSocket();
@@ -85,6 +89,7 @@ export default function ChatHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDeleteChat, setConfirmDeleteChat] = useState(false);
   const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
+  const [confirmDeleteSingle, setConfirmDeleteSingle] = useState(false);
   const menuRef = useRef(null);
 
   const other = useMemo(
@@ -98,8 +103,21 @@ export default function ChatHeader({
   );
 
   const selCount = selectedIds.length;
-  // Only copy if every selected message is a text message
   const canCopy = selCount > 0 && selectedMessages.every((m) => m.type === "text");
+
+  // Single-select helpers
+  const activeConversationId = useChatStore((s) => s.activeConversation?._id);
+  const removeMessage = useChatStore((s) => s.removeMessage);
+  const myUserId = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem("chat_user") || "{}")._id ?? null; }
+    catch { return null; }
+  }, []);
+  const singleIsOwn = singleSelectMessage
+    ? (typeof singleSelectMessage.sender === "object"
+        ? singleSelectMessage.sender._id
+        : singleSelectMessage.sender) === myUserId
+    : false;
+  const singleIsText = singleSelectMessage?.type === "text";
 
   useEffect(() => {
     const handler = (e) => {
@@ -140,8 +158,81 @@ export default function ChatHeader({
     onCopySelected?.();
   };
 
-  // ── Selection toolbar ──────────────────────────────────────────────────────
-  // Replaces voice/video icons with Delete + Copy when in selection mode.
+  const handleCopySingle = () => {
+    if (!singleSelectMessage?.content) return;
+    navigator.clipboard.writeText(singleSelectMessage.content)
+      .then(() => { toast.success("Copied!"); onCancelSingleSelect?.(); })
+      .catch(() => toast.error("Copy failed"));
+  };
+
+  const handleDeleteSingle = async () => {
+    setConfirmDeleteSingle(false);
+    onCancelSingleSelect?.();
+    try {
+      await axios.delete(`/messages/${singleSelectMessage._id}`);
+      removeMessage(singleSelectMessage._id, activeConversationId);
+      toast.success("Message deleted");
+    } catch {
+      toast.error("Could not delete message");
+    }
+  };
+
+  // ── Single-select toolbar (one bubble tapped on mobile) ───────────────────
+  if (singleSelectMessage) {
+    return (
+      <>
+        {confirmDeleteSingle && (
+          <ConfirmModal
+            title="Delete message?"
+            body="This message will be permanently deleted."
+            onConfirm={handleDeleteSingle}
+            onCancel={() => setConfirmDeleteSingle(false)}
+          />
+        )}
+        <header
+          className="h-[60px] sm:h-16 px-2 sm:px-4 border-b border-[var(--brand)]/30 flex items-center justify-between flex-shrink-0"
+          style={{ background: "var(--bg-secondary)", animation: "slide-down 0.18s ease" }}
+        >
+          {/* Left: cancel */}
+          <button
+            onClick={onCancelSingleSelect}
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] transition active:scale-90"
+            style={{ touchAction: "manipulation" }}
+          >
+            <X size={20} />
+          </button>
+
+          {/* Right: Copy (text only) + Delete (own only) */}
+          <div className="flex items-center gap-1">
+            {singleIsText && (
+              <button
+                onClick={handleCopySingle}
+                className="flex items-center gap-1.5 h-10 px-3 rounded-xl text-[var(--brand)] hover:bg-[var(--brand)]/10 transition active:scale-95"
+                style={{ touchAction: "manipulation" }}
+                title="Copy"
+              >
+                <Copy size={19} />
+                <span className="text-sm font-medium hidden sm:inline">Copy</span>
+              </button>
+            )}
+            {singleIsOwn && (
+              <button
+                onClick={() => setConfirmDeleteSingle(true)}
+                className="flex items-center gap-1.5 h-10 px-3 rounded-xl text-red-400 hover:bg-red-500/10 transition active:scale-95"
+                style={{ touchAction: "manipulation" }}
+                title="Delete"
+              >
+                <Trash2 size={19} />
+                <span className="text-sm font-medium hidden sm:inline">Delete</span>
+              </button>
+            )}
+          </div>
+        </header>
+      </>
+    );
+  }
+
+  // ── Multi-select toolbar ──────────────────────────────────────────────────
   if (selectionMode) {
     return (
       <>
@@ -171,7 +262,7 @@ export default function ChatHeader({
             </span>
           </div>
 
-          {/* Right: Copy + Delete — replacing voice/video call icons */}
+          {/* Right: Copy + Delete */}
           <div className="flex items-center gap-1">
             {canCopy && (
               <button
@@ -247,7 +338,7 @@ export default function ChatHeader({
           </button>
         </div>
 
-        {/* Right: more menu (no voice/video call in normal mode — they were demo only) */}
+        {/* Right: more menu */}
         <div className="flex items-center gap-0.5 ml-1 flex-shrink-0">
           <div className="relative" ref={menuRef}>
             <button

@@ -21,6 +21,10 @@ export default function ChatPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
 
+  // ── Single-select state (one bubble tapped on mobile) ─────────────────────
+  // singleSelectMsg: the full message object of the tapped bubble, or null
+  const [singleSelectMsg, setSingleSelectMsg] = useState(null);
+
   const convId = activeConversation?._id;
   const messages = useChatStore((s) => convId ? (s.messagesByConv[convId] || []) : []);
   const selectedMessages = messages.filter((m) => selectedIds.has(m._id));
@@ -36,25 +40,31 @@ export default function ChatPage() {
     });
   }, []);
 
-  // Called from MobileReactionSheet "Select message" → enters multi-select + selects that msg
+  // Long-press on a bubble → enters multi-select with that bubble pre-selected
   const handleEnterMultiSelect = useCallback((id) => {
+    setSingleSelectMsg(null);  // clear any single-select
     setSelectionMode(true);
     setSelectedIds(new Set([id]));
   }, []);
 
-  // Cancel selection
+  // Cancel multi-select
   const handleCancelSelection = useCallback(() => {
     setSelectionMode(false);
     setSelectedIds(new Set());
   }, []);
 
-  // Copy selected text messages
+  // Cancel single-select
+  const handleCancelSingleSelect = useCallback(() => {
+    setSingleSelectMsg(null);
+  }, []);
+
+  // Copy selected text messages (multi-select)
   const handleCopySelected = useCallback(() => {
     setSelectionMode(false);
     setSelectedIds(new Set());
   }, []);
 
-  // Delete selected — optimistic + API
+  // Delete selected — optimistic + API (multi-select)
   const handleDeleteSelected = useCallback(async () => {
     const ids = [...selectedIds];
     const removeMessage = useChatStore.getState().removeMessage;
@@ -69,10 +79,11 @@ export default function ChatPage() {
     }
   }, [selectedIds, convId]);
 
-  // Reset selection when conversation changes
+  // Reset all selection when conversation changes
   useEffect(() => {
     setSelectionMode(false);
     setSelectedIds(new Set());
+    setSingleSelectMsg(null);
   }, [convId]);
 
   // ── Socket + fetch ──────────────────────────────────────────────────────────
@@ -95,7 +106,11 @@ export default function ChatPage() {
   useEffect(() => {
     window.history.pushState({ chatPage: true }, "");
     const handlePopState = (e) => {
-      if (selectionMode) {
+      if (singleSelectMsg) {
+        e.preventDefault?.();
+        setSingleSelectMsg(null);
+        window.history.pushState({ chatPage: true }, "");
+      } else if (selectionMode) {
         e.preventDefault?.();
         handleCancelSelection();
         window.history.pushState({ chatPage: true }, "");
@@ -111,11 +126,12 @@ export default function ChatPage() {
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [mobileView, selectionMode, clearMessages, setActiveConversation, handleCancelSelection]);
+  }, [mobileView, selectionMode, singleSelectMsg, clearMessages, setActiveConversation, handleCancelSelection]);
 
   const openConversation = () => setMobileView("chat");
 
   const handleBack = () => {
+    if (singleSelectMsg) { setSingleSelectMsg(null); return; }
     if (selectionMode) { handleCancelSelection(); return; }
     clearMessages();
     setActiveConversation(null);
@@ -125,10 +141,18 @@ export default function ChatPage() {
 
   const handleGoHome = useCallback(() => {
     handleCancelSelection();
+    setSingleSelectMsg(null);
     clearMessages();
     setActiveConversation(null);
     setMobileView("sidebar");
   }, [clearMessages, setActiveConversation, handleCancelSelection]);
+
+  // When a bubble is single-tapped: find its message object and set it (null clears)
+  const handleBubbleTap = useCallback((msgId) => {
+    if (!msgId) { setSingleSelectMsg(null); return; }
+    const msg = messages.find((m) => m._id === msgId) || null;
+    setSingleSelectMsg(msg);
+  }, [messages]);
 
   return (
     <div className="flex h-full overflow-hidden bg-[var(--bg-primary)]">
@@ -151,21 +175,27 @@ export default function ChatPage() {
             <ChatHeader
               conversation={activeConversation}
               onBack={handleBack}
+              // Multi-select
               selectionMode={selectionMode}
               selectedMessages={selectedMessages}
               selectedIds={[...selectedIds]}
               onCancelSelection={handleCancelSelection}
               onDeleteSelected={handleDeleteSelected}
               onCopySelected={handleCopySelected}
+              // Single-select
+              singleSelectMessage={singleSelectMsg}
+              onCancelSingleSelect={handleCancelSingleSelect}
             />
             <MessageList
               selectionMode={selectionMode}
               selectedIds={selectedIds}
               onSelect={handleSelect}
               onEnterMultiSelect={handleEnterMultiSelect}
+              onBubbleTap={handleBubbleTap}
+              activeSingleId={singleSelectMsg?._id ?? null}
             />
-            {/* Hide input during multi-select (just like WhatsApp) */}
-            {!selectionMode && <MessageInput />}
+            {/* Hide input during selection */}
+            {!selectionMode && !singleSelectMsg && <MessageInput />}
           </>
         ) : (
           <EmptyChat />

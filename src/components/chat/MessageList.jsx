@@ -53,7 +53,9 @@ export default function MessageList({
   selectionMode = false,
   selectedIds,
   onSelect,
-  onEnterMultiSelect,  // (messageId) => void
+  onEnterMultiSelect,     // (messageId) => void — enters multi-select
+  onBubbleTap,            // (messageId | null) => void — single tap on mobile
+  activeSingleId = null,  // the currently single-selected bubble's id
 }) {
   const { user } = useAuth();
   const loadingMessages    = useChatStore((s) => s.loadingMessages);
@@ -200,6 +202,8 @@ export default function MessageList({
             isSelected={selectedIds?.has(msg._id) || false}
             onSelect={onSelect}
             onEnterMultiSelect={onEnterMultiSelect}
+            onBubbleTap={onBubbleTap}
+            activeSingleId={activeSingleId}
           />
         );
       })}
