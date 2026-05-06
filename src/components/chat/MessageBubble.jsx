@@ -257,6 +257,7 @@ function InlineReactionBar({
   content,
   fileName,
   onOpenImage,
+  onDismiss,
 }) {
   const isImage = messageType === "image";
   const isFile = messageType === "file";
@@ -313,10 +314,12 @@ function InlineReactionBar({
               <span>View</span>
             </button>
           )}
-          {/* FIX: use blob download instead of <a download> for cross-origin images */}
           <button
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => blobDownload(content, fileName || "image")}
+            onClick={() => {
+              blobDownload(content, fileName || "image");
+              onDismiss?.();
+            }}
             style={{ touchAction: "manipulation" }}
             className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-[var(--brand)] hover:bg-[var(--brand)]/10 transition active:scale-95 text-sm font-medium"
           >
@@ -875,6 +878,24 @@ export default function MessageBubble({
 
   const showMobileReactionBar = phone && showInlineReactions && !selectionMode;
 
+  // Close mobile inline bar when tapping anywhere outside the bubble
+  useEffect(() => {
+    if (!showMobileReactionBar) return;
+    const handler = (e) => {
+      // Let touches on buttons inside the bar propagate normally first
+      if (e.target.closest?.("button, a")) return;
+      setShowInlineReactions(false);
+    };
+    // Slight delay so the same tap that opened the bar doesn't immediately close it
+    const t = setTimeout(() => {
+      document.addEventListener("touchstart", handler, { passive: true });
+    }, 80);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("touchstart", handler);
+    };
+  }, [showMobileReactionBar]);
+
   return (
     <>
       {lightboxSrc && (
@@ -1103,6 +1124,7 @@ export default function MessageBubble({
                   handleReact(emoji);
                   setShowInlineReactions(false);
                 }}
+                onDismiss={() => setShowInlineReactions(false)}
               />
             )}
           </div>
