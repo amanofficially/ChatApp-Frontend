@@ -61,6 +61,8 @@ function ProfileModal({ onClose }) {
     setSaving(true);
     try {
       let updatedForm = { ...form };
+
+      // If user picked a new image, upload to Cloudinary first
       if (avatarBase64) {
         toast.loading("Uploading photo...", { id: "avatar-upload" });
         const { data } = await axios.post("/upload/avatar", {
@@ -69,6 +71,7 @@ function ProfileModal({ onClose }) {
         toast.dismiss("avatar-upload");
         updatedForm.avatar = data.url;
       }
+
       await updateProfile(updatedForm);
       toast.success("Profile updated!");
       onClose();
@@ -96,6 +99,7 @@ function ProfileModal({ onClose }) {
           </button>
         </div>
 
+        {/* Avatar section */}
         <div className="flex flex-col items-center mb-6">
           <div className="relative">
             <Avatar
@@ -223,6 +227,7 @@ function SettingsModal({ onClose }) {
   const toggle = (key, val, setter) => {
     setter(val);
     localStorage.setItem(key, val);
+    // Notify same-tab listeners (window.storage only fires cross-tab)
     window.dispatchEvent(new Event("storage"));
     toast.success(`Setting ${val ? "enabled" : "disabled"}`);
   };
@@ -324,20 +329,14 @@ export default function ProfileMenu() {
   const [open, setOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const containerRef = useRef();
+  const ref = useRef();
 
-  // Close on outside click/touch
   useEffect(() => {
     const handler = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target))
-        setOpen(false);
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
-    document.addEventListener("touchstart", handler, { passive: true });
-    return () => {
-      document.removeEventListener("mousedown", handler);
-      document.removeEventListener("touchstart", handler);
-    };
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   const handleLogout = async () => {
@@ -352,24 +351,9 @@ export default function ProfileMenu() {
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
-      {/*
-        ★ FIX: `relative` is on this wrapper so the popup positions
-        itself relative to the footer area, not the sidebar's scroll container.
-        `mx-0` ensures no accidental horizontal margin shifts on mobile.
-      */}
-      <div ref={containerRef} className="relative">
-        {/* ── Popup menu ───────────────────────────────────────────────────── */}
+      <div ref={ref} className="p-3 profile-footer relative">
         {open && (
-          <div
-            className="absolute bottom-full left-0 right-0 mb-1.5 card py-1.5 z-50"
-            style={{
-              // ★ FIX: inline shadow + subtle origin so it animates from bottom
-              boxShadow:
-                "0 -4px 24px rgba(0,0,0,0.12), 0 0 0 1px var(--border)",
-              transformOrigin: "bottom center",
-              animation: "floatUp 0.18s cubic-bezier(0.34,1.4,0.64,1)",
-            }}
-          >
+          <div className="absolute bottom-full left-3 right-3 mb-2 card py-1.5 animate-float-up z-50">
             <button
               onClick={() => {
                 setOpen(false);
@@ -378,15 +362,14 @@ export default function ProfileMenu() {
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-left hover:bg-[var(--bg-tertiary)] transition-colors duration-150 active:scale-[0.98]"
               style={{ touchAction: "manipulation" }}
             >
-              {/* ★ FIX: fixed icon width so text always starts at the same x */}
-              <span className="w-5 flex items-center justify-center flex-shrink-0">
-                <User size={15} className="text-[var(--text-muted)]" />
-              </span>
+              <User
+                size={16}
+                className="text-[var(--text-muted)] flex-shrink-0"
+              />
               <span className="text-[var(--text-secondary)] font-medium">
                 View Profile
               </span>
             </button>
-
             <button
               onClick={() => {
                 setOpen(false);
@@ -395,94 +378,63 @@ export default function ProfileMenu() {
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-left hover:bg-[var(--bg-tertiary)] transition-colors duration-150 active:scale-[0.98]"
               style={{ touchAction: "manipulation" }}
             >
-              <span className="w-5 flex items-center justify-center flex-shrink-0">
-                <Settings size={15} className="text-[var(--text-muted)]" />
-              </span>
+              <Settings
+                size={16}
+                className="text-[var(--text-muted)] flex-shrink-0"
+              />
               <span className="text-[var(--text-secondary)] font-medium">
                 Settings
               </span>
             </button>
-
             <div className="mx-3 my-1 h-px bg-[var(--border)]" />
-
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-left text-red-500 hover:bg-red-500/8 transition-colors duration-150 active:scale-[0.98]"
               style={{ touchAction: "manipulation" }}
             >
-              <span className="w-5 flex items-center justify-center flex-shrink-0">
-                <LogOut size={15} className="text-red-500" />
-              </span>
+              <LogOut size={16} className="flex-shrink-0" />
               <span className="font-medium">Sign out</span>
             </button>
           </div>
         )}
 
-        {/* ── Footer trigger button ─────────────────────────────────────── */}
-        <div className="p-3">
-          <button
-            onClick={() => setOpen((v) => !v)}
-            className="flex items-center gap-3 w-full rounded-xl px-2.5 py-2 hover:bg-[var(--bg-tertiary)] transition-all duration-200 group"
-            style={{ touchAction: "manipulation" }}
-          >
-            {/* Avatar: fixed size, never shrinks */}
-            <div className="flex-shrink-0">
-              <Avatar user={user} size="sm" />
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-3 w-full rounded-xl px-2.5 py-2 hover:bg-[var(--bg-tertiary)] transition-all duration-200 group"
+        >
+          <Avatar user={user} size="sm" />
+          <div className="flex-1 text-left min-w-0">
+            <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
+              {user?.username}
+            </p>
+            <div className="flex items-center gap-1.5">
+              {isConnected ? (
+                <Wifi size={11} className="text-green-400" />
+              ) : (
+                <WifiOff size={11} className="text-[var(--text-muted)]" />
+              )}
+              <span className="text-[11px] text-[var(--text-muted)]">
+                {isConnected ? "Online" : "Connecting..."}
+              </span>
+              {user?.mobile && (
+                <>
+                  <span className="text-[var(--text-muted)] text-[11px]">
+                    ·
+                  </span>
+                  <Phone size={10} className="text-[var(--text-muted)]" />
+                  <span className="text-[11px] text-[var(--text-muted)] truncate">
+                    {user.mobile}
+                  </span>
+                </>
+              )}
             </div>
-
-            {/* User info: min-w-0 so text truncates instead of pushing chevron */}
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-sm font-semibold text-[var(--text-primary)] truncate leading-tight">
-                {user?.username}
-              </p>
-              {/* ★ FIX: status row in its own flex line, items aligned */}
-              <div className="flex items-center gap-1 mt-0.5">
-                {isConnected ? (
-                  <Wifi size={10} className="text-green-400 flex-shrink-0" />
-                ) : (
-                  <WifiOff
-                    size={10}
-                    className="text-[var(--text-muted)] flex-shrink-0"
-                  />
-                )}
-                <span className="text-[10px] text-[var(--text-muted)] leading-none">
-                  {isConnected ? "Online" : "Connecting..."}
-                </span>
-                {user?.mobile && (
-                  <>
-                    <span className="text-[var(--text-muted)] text-[10px] mx-0.5">
-                      ·
-                    </span>
-                    <Phone
-                      size={9}
-                      className="text-[var(--text-muted)] flex-shrink-0"
-                    />
-                    <span className="text-[10px] text-[var(--text-muted)] truncate leading-none">
-                      {user.mobile}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Chevron: fixed, never shrinks */}
-            <div className="flex-shrink-0">
-              <ChevronUp
-                size={14}
-                className={`text-[var(--text-muted)] transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-              />
-            </div>
-          </button>
-        </div>
+          </div>
+          <ChevronUp
+            size={15}
+            className={`text-[var(--text-muted)] transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          />
+        </button>
       </div>
-
-      {/* ★ FIX: keyframe defined inline so it works without a global CSS file */}
-      <style>{`
-        @keyframes floatUp {
-          from { opacity: 0; transform: translateY(6px) scale(0.97); }
-          to   { opacity: 1; transform: translateY(0)   scale(1);    }
-        }
-      `}</style>
     </>
   );
 }
