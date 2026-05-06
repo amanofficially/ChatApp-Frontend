@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, memo, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, memo, useMemo, useCallback } from "react";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "../ui/TypingIndicator";
 import { SkeletonMessage } from "../ui/Skeleton";
 import useChatStore from "../../context/chatStore";
 import { useAuth } from "../../context/AuthContext";
 import { format, isSameDay } from "date-fns";
+import { ChevronDown } from "lucide-react";
 
 const SKELETON_CONFIGS = [
   { align: "left",  width: 180 },
@@ -25,9 +26,9 @@ const DateDivider = memo(function DateDivider({ date }) {
   else if (isSameDay(d, new Date(today - 86_400_000))) label = "Yesterday";
   else label = format(d, "MMMM d, yyyy");
   return (
-    <div className="flex items-center gap-3 my-3 px-2">
+    <div className="flex items-center gap-3 my-4 px-2">
       <div className="flex-1 h-px bg-[var(--border)]" />
-      <span className="text-[10px] font-semibold text-[var(--text-muted)] bg-[var(--bg-primary)] px-2 py-0.5 rounded-full border border-[var(--border)]">
+      <span className="text-[10px] font-semibold text-[var(--text-muted)] bg-[var(--bg-primary)] px-3 py-1 rounded-full border border-[var(--border)] select-none">
         {label}
       </span>
       <div className="flex-1 h-px bg-[var(--border)]" />
@@ -39,7 +40,7 @@ const UnreadDivider = memo(function UnreadDivider({ count }) {
   return (
     <div className="flex items-center gap-3 my-3 px-2" data-unread-divider="true">
       <div className="flex-1 h-px bg-[var(--brand)]/40" />
-      <span className="text-[10px] font-bold text-[var(--brand)] bg-[var(--brand)]/10 px-3 py-1 rounded-full border border-[var(--brand)]/30 whitespace-nowrap">
+      <span className="text-[10px] font-bold text-[var(--brand)] bg-[var(--brand)]/10 px-3 py-1 rounded-full border border-[var(--brand)]/30 whitespace-nowrap select-none">
         {count} new {count === 1 ? "message" : "messages"}
       </span>
       <div className="flex-1 h-px bg-[var(--brand)]/40" />
@@ -53,9 +54,9 @@ export default function MessageList({
   selectionMode = false,
   selectedIds,
   onSelect,
-  onEnterMultiSelect,     // (messageId) => void — enters multi-select
-  onBubbleTap,            // (messageId | null) => void — single tap on mobile
-  activeSingleId = null,  // the currently single-selected bubble's id
+  onEnterMultiSelect,
+  onBubbleTap,
+  activeSingleId = null,
 }) {
   const { user } = useAuth();
   const loadingMessages    = useChatStore((s) => s.loadingMessages);
@@ -71,10 +72,31 @@ export default function MessageList({
   const prevConvIdRef  = useRef(null);
   const justSwitchedRef = useRef(false);
 
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [unreadBelow, setUnreadBelow] = useState(0);
+
   const othersTyping = useMemo(
     () => typingUsersForConv.filter((id) => id !== user?._id?.toString()),
     [typingUsersForConv, user?._id],
   );
+
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    setUnreadBelow(0);
+  }, []);
+
+  // Track scroll position to show/hide scroll-to-bottom button
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const handler = () => {
+      const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      setShowScrollBtn(distFromBottom > 200);
+      if (distFromBottom < 100) setUnreadBelow(0);
+    };
+    container.addEventListener("scroll", handler, { passive: true });
+    return () => container.removeEventListener("scroll", handler);
+  }, []);
 
   const grouped = useMemo(() => {
     if (!messages.length) return [];
@@ -124,6 +146,8 @@ export default function MessageList({
       prevConvIdRef.current = convId;
       prevCountRef.current = 0;
       justSwitchedRef.current = true;
+      setShowScrollBtn(false);
+      setUnreadBelow(0);
     }
   }, [convId]);
 
@@ -141,8 +165,19 @@ export default function MessageList({
     prevCountRef.current = messages.length;
     if (isNew && bottomRef.current) {
       const c = containerRef.current;
-      const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 250;
-      if (nearBottom) bottomRef.current.scrollIntoView({ behavior: "smooth" });
+      const distFromBottom = c.scrollHeight - c.scrollTop - c.clientHeight;
+      const nearBottom = distFromBottom < 250;
+      if (nearBottom) {
+        bottomRef.current.scrollIntoView({ behavior: "smooth" });
+        setUnreadBelow(0);
+      } else {
+        // Incoming message but user scrolled up — show badge
+        const lastMsg = messages[messages.length - 1];
+        const senderId = typeof lastMsg?.sender === "object" ? lastMsg?.sender?._id : lastMsg?.sender;
+        if (senderId?.toString() !== user?._id?.toString()) {
+          setUnreadBelow(prev => prev + 1);
+        }
+      }
     }
   }, [messages.length, loadingMessages]);
 
@@ -165,51 +200,69 @@ export default function MessageList({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="flex-1 overflow-y-auto msg-scroll px-4 py-4 space-y-1"
-      style={{ contain: "paint layout" }}
-    >
-      {grouped.length === 0 && (
-        <div className="flex flex-col items-center justify-center h-full gap-3 py-12">
-          <div className="w-16 h-16 rounded-2xl bg-[var(--bg-tertiary)] flex items-center justify-center text-3xl">💬</div>
-          <p className="text-sm text-[var(--text-muted)]">No messages yet. Say hello!</p>
-        </div>
+    <div className="flex-1 relative overflow-hidden">
+      <div
+        ref={containerRef}
+        className="h-full overflow-y-auto msg-scroll px-4 py-4 space-y-1"
+        style={{ contain: "paint layout" }}
+      >
+        {grouped.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full gap-3 py-12">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--bg-tertiary)] flex items-center justify-center text-3xl">💬</div>
+            <p className="text-sm text-[var(--text-muted)]">No messages yet. Say hello!</p>
+          </div>
+        )}
+
+        {grouped.map((item) => {
+          if (item.type === "divider") return <DateDivider key={item.key} date={item.date} />;
+          if (item.type === "unread-divider") return <UnreadDivider key={item.key} count={item.count} />;
+
+          const { msg, showAvatar, senderId } = item;
+          const isOwn =
+            senderId === user?._id ||
+            senderId?.toString() === user?._id?.toString();
+
+          const senderObj =
+            typeof msg.sender === "object"
+              ? msg.sender
+              : activeConversation?.participants?.find((p) => p._id === senderId);
+
+          return (
+            <MemoMessageBubble
+              key={item.key}
+              message={msg}
+              isOwn={isOwn}
+              showAvatar={showAvatar}
+              sender={isOwn ? user : senderObj}
+              selectionMode={selectionMode}
+              isSelected={selectedIds?.has(msg._id) || false}
+              onSelect={onSelect}
+              onEnterMultiSelect={onEnterMultiSelect}
+              onBubbleTap={onBubbleTap}
+              activeSingleId={activeSingleId}
+            />
+          );
+        })}
+
+        {othersTyping.length > 0 && <TypingIndicator />}
+        <div ref={bottomRef} className="h-1" />
+      </div>
+
+      {/* Scroll to bottom button */}
+      {showScrollBtn && (
+        <button
+          onClick={scrollToBottom}
+          className="scroll-to-bottom-btn"
+          title="Scroll to bottom"
+        >
+          {unreadBelow > 0 && (
+            <span className="scroll-btn-badge">
+              {unreadBelow > 9 ? "9+" : unreadBelow}
+            </span>
+          )}
+          <ChevronDown size={18} />
+        </button>
       )}
-
-      {grouped.map((item) => {
-        if (item.type === "divider") return <DateDivider key={item.key} date={item.date} />;
-        if (item.type === "unread-divider") return <UnreadDivider key={item.key} count={item.count} />;
-
-        const { msg, showAvatar, senderId } = item;
-        const isOwn =
-          senderId === user?._id ||
-          senderId?.toString() === user?._id?.toString();
-
-        const senderObj =
-          typeof msg.sender === "object"
-            ? msg.sender
-            : activeConversation?.participants?.find((p) => p._id === senderId);
-
-        return (
-          <MemoMessageBubble
-            key={item.key}
-            message={msg}
-            isOwn={isOwn}
-            showAvatar={showAvatar}
-            sender={isOwn ? user : senderObj}
-            selectionMode={selectionMode}
-            isSelected={selectedIds?.has(msg._id) || false}
-            onSelect={onSelect}
-            onEnterMultiSelect={onEnterMultiSelect}
-            onBubbleTap={onBubbleTap}
-            activeSingleId={activeSingleId}
-          />
-        );
-      })}
-
-      {othersTyping.length > 0 && <TypingIndicator />}
-      <div ref={bottomRef} className="h-1" />
     </div>
   );
 }

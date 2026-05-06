@@ -10,9 +10,10 @@ import {
   X,
   Camera,
   Bell,
+  BellOff,
   Moon,
   Sun,
-  Shield,
+  CornerDownLeft,
   Check,
   Phone,
 } from "lucide-react";
@@ -224,6 +225,8 @@ function SettingsModal({ onClose }) {
   const toggle = (key, val, setter) => {
     setter(val);
     localStorage.setItem(key, val);
+    // Notify same-tab listeners (window.storage only fires cross-tab)
+    window.dispatchEvent(new Event("storage"));
     toast.success(`Setting ${val ? "enabled" : "disabled"}`);
   };
 
@@ -286,7 +289,7 @@ function SettingsModal({ onClose }) {
             desc="Get notified for new messages"
             value={notifs}
             onToggle={() => toggle("cf-notifs", !notifs, setNotifs)}
-            icon={Bell}
+            icon={notifs ? Bell : BellOff}
           />
           <ToggleRow
             label="Message Sounds"
@@ -305,7 +308,7 @@ function SettingsModal({ onClose }) {
           desc="Press Enter to send messages"
           value={enterSend}
           onToggle={() => toggle("cf-enter-send", !enterSend, setEnterSend)}
-          icon={Shield}
+          icon={CornerDownLeft}
         />
 
         <button onClick={onClose} className="w-full btn-primary mt-5">
@@ -346,9 +349,9 @@ export default function ProfileMenu() {
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
-      <div ref={ref} className="p-3 border-t border-[var(--border)] relative">
+      <div ref={ref} className="p-3 profile-footer relative">
         {open && (
-          <div className="absolute bottom-full left-3 right-3 mb-2 card py-1.5 animate-slide-up z-50">
+          <div className="absolute bottom-full left-3 right-3 mb-2 card py-1.5 animate-float-up z-50">
             <button
               onClick={() => {
                 setOpen(false);

@@ -289,7 +289,7 @@ export default function Sidebar({ onConversationSelect, onGoHome }) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => { onGoHome?.(); }}
-              className="flex items-center gap-3 hover:opacity-80 transition-opacity active:scale-95 transition-transform"
+              className="flex items-center gap-3 hover:opacity-80 transition-all active:scale-95"
               title="Home"
             >
             <div className="relative">

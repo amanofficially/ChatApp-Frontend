@@ -17,12 +17,6 @@ export function formatLastSeen(date) {
   return `Last seen ${formatDistanceToNow(new Date(date), { addSuffix: true })}`;
 }
 
-export function getAvatarUrl(user) {
-  if (user?.avatar) return user.avatar;
-  const seed = user?.username || user?.email || "user";
-  return `https://api.dicebear.com/8.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`;
-}
-
 export function getInitials(name) {
   if (!name) return "?";
   return name

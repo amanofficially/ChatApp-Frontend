@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Send, Smile, Paperclip, X, Loader2, FileText, Image as ImageIcon } from "lucide-react";
 import useChatStore from "../../context/chatStore";
 import { useTyping } from "../../hooks/useTyping";
@@ -37,10 +37,17 @@ export default function MessageInput() {
 
   const { startTyping, stopTyping } = useTyping(activeConversation?._id);
 
-  const enterSend = useMemo(
+  const [enterSend, setEnterSend] = useState(
     () => localStorage.getItem("cf-enter-send") !== "false",
-    [],
   );
+
+  // Stay in sync when user changes setting in another tab or from SettingsModal
+  useEffect(() => {
+    const handler = () =>
+      setEnterSend(localStorage.getItem("cf-enter-send") !== "false");
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, []);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -329,9 +336,9 @@ export default function MessageInput() {
         </button>
       </div>
 
-      {enterSend && text.length > 30 && (
+      {text.length > 30 && (
         <p className="text-[10px] text-[var(--text-muted)] text-right mt-1 pr-1 hidden sm:block select-none">
-          Shift+Enter for newline
+          {enterSend ? "Shift+Enter for newline" : "Enter sends are off · use Send button"}
         </p>
       )}
     </div>

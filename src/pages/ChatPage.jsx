@@ -58,7 +58,7 @@ export default function ChatPage() {
     setSingleSelectMsg(null);
   }, []);
 
-  // Copy selected text messages (multi-select)
+  // Copy selected — actual clipboard write is in ChatHeader, this just clears selection
   const handleCopySelected = useCallback(() => {
     setSelectionMode(false);
     setSelectedIds(new Set());
