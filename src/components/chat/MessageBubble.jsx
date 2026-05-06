@@ -37,10 +37,9 @@ function useIsPhone() {
   return phone;
 }
 
-// ─── useOutsideClick ──────────────────────────────────────────────────────────
-function useOutsideClick(ref, onClose, ignoreRefs = [], enabled = true) {
+// ─── useOutsideClick ─────────────────────────────────────────────────────────
+function useOutsideClick(ref, onClose, ignoreRefs = []) {
   useEffect(() => {
-    if (!enabled) return;
     const handler = (e) => {
       if (ref.current?.contains(e.target)) return;
       if (ignoreRefs.some((r) => r?.current?.contains(e.target))) return;
@@ -55,7 +54,221 @@ function useOutsideClick(ref, onClose, ignoreRefs = [], enabled = true) {
       document.removeEventListener("mousedown", handler);
       document.removeEventListener("touchstart", handler);
     };
-  }, [ref, onClose, enabled]); // eslint-disable-line
+  }, [ref, onClose]); // eslint-disable-line
+}
+
+// ─── blobDownload ─────────────────────────────────────────────────────────────
+async function blobDownload(url, fallbackName = "file") {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const ext =
+      blob.type.split("/")[1] || fallbackName.split(".").pop() || "bin";
+    const name = fallbackName.includes(".")
+      ? fallbackName
+      : `${fallbackName}.${ext}`;
+    const objectUrl = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement("a"), {
+      href: objectUrl,
+      download: name,
+    });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objectUrl);
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+// ─── EmojiBar ─────────────────────────────────────────────────────────────────
+// Shared reaction row — used by both mobile inline bar and desktop popup.
+function EmojiBar({ currentReaction, onReact }) {
+  return (
+    <div
+      className="flex items-center gap-0.5 px-2 py-1.5 rounded-full border border-[var(--border)]"
+      style={{
+        background: "var(--bg-secondary)",
+        boxShadow: "0 4px 24px rgba(0,0,0,0.22)",
+        animation: "reactionBarIn 0.22s cubic-bezier(0.34,1.56,0.64,1)",
+      }}
+    >
+      {REACTIONS.map((emoji) => (
+        <button
+          key={emoji}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onReact(emoji)}
+          style={{ touchAction: "manipulation" }}
+          className={`text-xl w-9 h-9 flex items-center justify-center rounded-full transition-all duration-150 active:scale-90
+            ${
+              currentReaction === emoji
+                ? "bg-[var(--brand)]/15 scale-110 ring-2 ring-[var(--brand)]/40"
+                : "hover:bg-[var(--bg-tertiary)] hover:scale-125"
+            }`}
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── InlineReactionBar (mobile) ───────────────────────────────────────────────
+function InlineReactionBar({
+  isOwn,
+  currentReaction,
+  onReact,
+  messageType,
+  content,
+  fileName,
+  onOpenImage,
+  onDismiss,
+}) {
+  const isImage = messageType === "image";
+  const isFile = messageType === "file";
+
+  return (
+    <div
+      className={`flex flex-col gap-1 mt-1 ${isOwn ? "items-end mr-1" : "items-start ml-1"}`}
+    >
+      <EmojiBar currentReaction={currentReaction} onReact={onReact} />
+
+      {(isImage || isFile) && (
+        <div
+          className="flex items-center gap-1 px-2 py-1 rounded-2xl border border-[var(--border)]"
+          style={{
+            background: "var(--bg-secondary)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+            animation: "reactionBarIn 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+          }}
+        >
+          {isImage && (
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={onOpenImage}
+              style={{ touchAction: "manipulation" }}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-[var(--brand)] hover:bg-[var(--brand)]/10 transition active:scale-95 text-sm font-medium"
+            >
+              <ZoomIn size={15} />
+              <span>View</span>
+            </button>
+          )}
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              // Dismiss bar first (sync), then start async download
+              onDismiss();
+              blobDownload(content, fileName || "image");
+            }}
+            style={{ touchAction: "manipulation" }}
+            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-[var(--brand)] hover:bg-[var(--brand)]/10 transition active:scale-95 text-sm font-medium"
+          >
+            <Download size={15} />
+            <span>Download</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ContextMenu (desktop) ───────────────────────────────────────────────────
+function ContextMenu({
+  isOwn,
+  messageType,
+  content,
+  fileName,
+  onCopy,
+  onDelete,
+  onClose,
+  ignoreRefs = [],
+}) {
+  const ref = useRef();
+  useOutsideClick(ref, onClose, ignoreRefs);
+
+  const isText = messageType === "text";
+  const isImage = messageType === "image";
+  const isFile = messageType === "file";
+  const isPdf = isFile && fileName?.toLowerCase().endsWith(".pdf");
+  const iconStyle = {
+    background: "color-mix(in srgb, var(--brand) 12%, transparent)",
+  };
+
+  return (
+    <div
+      ref={ref}
+      className={`context-menu-popup absolute bottom-full mb-2 z-50 ${isOwn ? "right-0" : "left-0"}`}
+      style={{ animation: "contextMenuIn 0.18s cubic-bezier(0.34,1.4,0.64,1)" }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {isText && (
+        <button
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onCopy();
+          }}
+          className="context-menu-item"
+        >
+          <div className="context-menu-icon" style={iconStyle}>
+            <Copy size={13} style={{ color: "var(--brand)" }} />
+          </div>
+          <span>Copy text</span>
+        </button>
+      )}
+      {(isImage || isFile) && (
+        <button
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onClose();
+            blobDownload(content, fileName || "image");
+          }}
+          className="context-menu-item"
+        >
+          <div className="context-menu-icon" style={iconStyle}>
+            <Download size={13} style={{ color: "var(--brand)" }} />
+          </div>
+          <span>Download</span>
+        </button>
+      )}
+      {isPdf && (
+        <a
+          href={content}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="context-menu-item"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+        >
+          <div className="context-menu-icon" style={iconStyle}>
+            <ExternalLink size={13} style={{ color: "var(--brand)" }} />
+          </div>
+          <span>Open PDF</span>
+        </a>
+      )}
+      {isOwn && (
+        <button
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="context-menu-item danger"
+        >
+          <div
+            className="context-menu-icon"
+            style={{ background: "rgba(239,68,68,0.12)" }}
+          >
+            <Trash2 size={13} style={{ color: "#ef4444" }} />
+          </div>
+          <span>Delete</span>
+        </button>
+      )}
+    </div>
+  );
 }
 
 // ─── ImageLightbox ────────────────────────────────────────────────────────────
@@ -74,31 +287,6 @@ function ImageLightbox({ src, onClose }) {
       document.body.style.overflow = "";
     };
   }, [onClose]);
-
-  // ── Blob download helper (fixes cross-origin download attribute) ──────────
-  const handleDownload = useCallback(
-    async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      try {
-        const res = await fetch(src);
-        const blob = await res.blob();
-        const ext = blob.type.split("/")[1] || "jpg";
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `image.${ext}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } catch {
-        // Fallback: open in new tab
-        window.open(src, "_blank", "noopener,noreferrer");
-      }
-    },
-    [src],
-  );
 
   return (
     <div
@@ -122,7 +310,7 @@ function ImageLightbox({ src, onClose }) {
             backdropFilter: "blur(8px)",
             touchAction: "manipulation",
           }}
-          onClick={handleDownload}
+          onClick={() => blobDownload(src, "image")}
         >
           <Download size={14} />
           <span>Save</span>
@@ -222,227 +410,6 @@ export function ConfirmModal({
   );
 }
 
-// ─── blobDownload ─────────────────────────────────────────────────────────────
-// Fetches the URL as a blob so the `download` attribute works even cross-origin.
-async function blobDownload(url, fallbackName = "file") {
-  try {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    const ext =
-      blob.type.split("/")[1] || fallbackName.split(".").pop() || "bin";
-    const name = fallbackName.includes(".")
-      ? fallbackName
-      : `${fallbackName}.${ext}`;
-    const objectUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = objectUrl;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(objectUrl);
-  } catch {
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-}
-
-// ─── InlineReactionBar ────────────────────────────────────────────────────────
-// Shown directly below a bubble on mobile single-tap.
-// For images/files: also shows Download + Open-fullscreen actions at the bottom.
-function InlineReactionBar({
-  isOwn,
-  currentReaction,
-  onReact,
-  messageType,
-  content,
-  fileName,
-  onOpenImage,
-  onDismiss,
-}) {
-  const isImage = messageType === "image";
-  const isFile = messageType === "file";
-
-  return (
-    <div
-      className={`flex flex-col gap-1 mt-1 ${isOwn ? "items-end mr-1" : "items-start ml-1"}`}
-    >
-      {/* Emoji reactions row */}
-      <div
-        className="flex items-center gap-0.5 px-2 py-1.5 rounded-full border border-[var(--border)]"
-        style={{
-          background: "var(--bg-secondary)",
-          boxShadow: "0 4px 24px rgba(0,0,0,0.22)",
-          animation: "reactionBarIn 0.22s cubic-bezier(0.34,1.56,0.64,1)",
-        }}
-      >
-        {REACTIONS.map((emoji) => (
-          <button
-            key={emoji}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onReact(emoji)}
-            style={{ touchAction: "manipulation" }}
-            className={`text-xl w-9 h-9 flex items-center justify-center rounded-full transition-all duration-150 active:scale-90
-              ${
-                currentReaction === emoji
-                  ? "bg-[var(--brand)]/15 scale-110 ring-2 ring-[var(--brand)]/40"
-                  : "hover:bg-[var(--bg-tertiary)] hover:scale-125"
-              }`}
-          >
-            {emoji}
-          </button>
-        ))}
-      </div>
-
-      {/* Image/File action row */}
-      {(isImage || isFile) && (
-        <div
-          className="flex items-center gap-1 px-2 py-1 rounded-2xl border border-[var(--border)]"
-          style={{
-            background: "var(--bg-secondary)",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
-            animation: "reactionBarIn 0.25s cubic-bezier(0.34,1.56,0.64,1)",
-          }}
-        >
-          {isImage && (
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onOpenImage}
-              style={{ touchAction: "manipulation" }}
-              className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-[var(--brand)] hover:bg-[var(--brand)]/10 transition active:scale-95 text-sm font-medium"
-            >
-              <ZoomIn size={15} />
-              <span>View</span>
-            </button>
-          )}
-          <button
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              blobDownload(content, fileName || "image");
-              onDismiss?.();
-            }}
-            style={{ touchAction: "manipulation" }}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-[var(--brand)] hover:bg-[var(--brand)]/10 transition active:scale-95 text-sm font-medium"
-          >
-            <Download size={15} />
-            <span>Download</span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── ContextMenu (Desktop) ────────────────────────────────────────────────────
-function ContextMenu({
-  isOwn,
-  messageType,
-  content,
-  fileName,
-  onCopy,
-  onDelete,
-  onClose,
-  ignoreRefs = [],
-}) {
-  const ref = useRef();
-  useOutsideClick(ref, onClose, ignoreRefs);
-  const isText = messageType === "text";
-  const isImage = messageType === "image";
-  const isFile = messageType === "file";
-  const isPdf = isFile && fileName?.toLowerCase().endsWith(".pdf");
-
-  return (
-    <div
-      ref={ref}
-      className={`context-menu-popup absolute bottom-full mb-2 z-50 ${isOwn ? "right-0" : "left-0"}`}
-      style={{ animation: "contextMenuIn 0.18s cubic-bezier(0.34,1.4,0.64,1)" }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {isText && (
-        <button
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onCopy();
-          }}
-          className="context-menu-item"
-        >
-          <div
-            className="context-menu-icon"
-            style={{
-              background: "color-mix(in srgb, var(--brand) 12%, transparent)",
-            }}
-          >
-            <Copy size={13} style={{ color: "var(--brand)" }} />
-          </div>
-          <span>Copy text</span>
-        </button>
-      )}
-      {/* FIX: use blob download for images on desktop too */}
-      {(isImage || isFile) && (
-        <button
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            blobDownload(content, fileName || "image");
-            setTimeout(onClose, 150);
-          }}
-          className="context-menu-item"
-        >
-          <div
-            className="context-menu-icon"
-            style={{
-              background: "color-mix(in srgb, var(--brand) 12%, transparent)",
-            }}
-          >
-            <Download size={13} style={{ color: "var(--brand)" }} />
-          </div>
-          <span>Download</span>
-        </button>
-      )}
-      {isPdf && (
-        <a
-          href={content}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="context-menu-item"
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            setTimeout(onClose, 150);
-          }}
-        >
-          <div
-            className="context-menu-icon"
-            style={{
-              background: "color-mix(in srgb, var(--brand) 12%, transparent)",
-            }}
-          >
-            <ExternalLink size={13} style={{ color: "var(--brand)" }} />
-          </div>
-          <span>Open PDF</span>
-        </a>
-      )}
-      {isOwn && (
-        <button
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="context-menu-item danger"
-        >
-          <div
-            className="context-menu-icon"
-            style={{ background: "rgba(239,68,68,0.12)" }}
-          >
-            <Trash2 size={13} style={{ color: "#ef4444" }} />
-          </div>
-          <span>Delete</span>
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ─── ReactionSummary ──────────────────────────────────────────────────────────
 function ReactionSummary({ reactions, isOwn, onPillClick }) {
   if (!reactions || Object.keys(reactions).length === 0) return null;
@@ -492,6 +459,7 @@ function TickIcon({ status }) {
   return <Check size={13} className="text-[var(--text-muted)] flex-shrink-0" />;
 }
 
+// ─── SelectionCheckbox ────────────────────────────────────────────────────────
 function SelectionCheckbox({ checked, isOwn }) {
   return (
     <div
@@ -505,7 +473,6 @@ function SelectionCheckbox({ checked, isOwn }) {
 }
 
 // ─── MessageContent ───────────────────────────────────────────────────────────
-// disableImageClick: true on mobile — tap is handled by touch events, not onClick
 function MessageContent({ message, isOwn, onImageClick, disableImageClick }) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -537,7 +504,6 @@ function MessageContent({ message, isOwn, onImageClick, disableImageClick }) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              // On mobile this is a no-op — touch events handle everything
               if (!disableImageClick) onImageClick(message.content);
             }}
             className="group/img rounded-xl overflow-hidden focus:outline-none active:opacity-75 relative"
@@ -572,7 +538,6 @@ function MessageContent({ message, isOwn, onImageClick, disableImageClick }) {
                 borderRadius: "0.75rem",
               }}
             />
-            {/* Zoom overlay only on desktop */}
             {!disableImageClick && (
               <div
                 className="absolute inset-0 rounded-xl flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity duration-150"
@@ -637,13 +602,6 @@ export default function MessageBubble({
   activeSingleId,
 }) {
   const [showInlineReactions, setShowInlineReactions] = useState(false);
-
-  useEffect(() => {
-    if (activeSingleId !== message._id) {
-      setShowInlineReactions(false);
-    }
-  }, [activeSingleId, message._id]);
-
   const [showMenu, setShowMenu] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -687,6 +645,7 @@ export default function MessageBubble({
   const hasReactions = Object.keys(reactions).length > 0;
   const displayMsg = storeMessage || message;
   const isImageMsg = displayMsg.type === "image";
+  const showMobileReactionBar = phone && showInlineReactions && !selectionMode;
 
   const closeAll = useCallback(() => {
     setShowMenu(false);
@@ -694,13 +653,32 @@ export default function MessageBubble({
     setShowInlineReactions(false);
   }, []);
 
+  // Sync: close if another bubble was tapped
   useEffect(() => {
-    if (selectionMode) {
+    if (activeSingleId !== message._id) setShowInlineReactions(false);
+  }, [activeSingleId, message._id]);
+
+  // Close when entering multi-select
+  useEffect(() => {
+    if (selectionMode) closeAll();
+  }, [selectionMode, closeAll]);
+
+  // Close mobile bar on outside tap — skip taps inside [data-bar] wrapper
+  useEffect(() => {
+    if (!showMobileReactionBar) return;
+    const handler = (e) => {
+      if (e.target.closest("[data-bar]")) return;
       setShowInlineReactions(false);
-      setShowMenu(false);
-      setShowReactions(false);
-    }
-  }, [selectionMode]);
+    };
+    const t = setTimeout(
+      () => document.addEventListener("touchstart", handler, { passive: true }),
+      80,
+    );
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("touchstart", handler);
+    };
+  }, [showMobileReactionBar]);
 
   const handleCopy = useCallback(async () => {
     closeAll();
@@ -745,8 +723,7 @@ export default function MessageBubble({
       const prev = reactions[myUserId];
       const next = prev === emoji ? null : emoji;
       updateReaction(message._id, myUserId, next);
-      closeAll();
-      setShowInlineReactions(false);
+      closeAll(); // closes bar + all popups
       try {
         await axios.post(`/messages/${message._id}/react`, { emoji: next });
       } catch {
@@ -757,7 +734,7 @@ export default function MessageBubble({
     [message._id, myUserId, reactions, closeAll],
   );
 
-  // ── Touch handlers (mobile) ───────────────────────────────────────────────
+  // ── Touch handlers (mobile) ──────────────────────────────────────────────
   const onTouchStart = useCallback(
     (e) => {
       if (["A", "BUTTON"].includes(e.target.tagName)) return;
@@ -772,7 +749,6 @@ export default function MessageBubble({
         if (selectionMode) {
           onSelect?.(message._id);
         } else if (isImageMsg) {
-          // Long-press on image → open lightbox
           setLightboxSrc(displayMsg.content);
           setShowInlineReactions(false);
         } else {
@@ -813,8 +789,6 @@ export default function MessageBubble({
         onSelect?.(message._id);
         return;
       }
-      // Short tap → toggle inline reaction/action bar
-      // Images show the bar (with View + Download) instead of opening lightbox directly
       setShowInlineReactions((prev) => !prev);
     },
     [selectionMode, onSelect, message._id],
@@ -876,26 +850,6 @@ export default function MessageBubble({
     );
   }
 
-  const showMobileReactionBar = phone && showInlineReactions && !selectionMode;
-
-  // Close mobile inline bar when tapping anywhere outside the bubble
-  useEffect(() => {
-    if (!showMobileReactionBar) return;
-    const handler = (e) => {
-      // Let touches on buttons inside the bar propagate normally first
-      if (e.target.closest?.("button, a")) return;
-      setShowInlineReactions(false);
-    };
-    // Slight delay so the same tap that opened the bar doesn't immediately close it
-    const t = setTimeout(() => {
-      document.addEventListener("touchstart", handler, { passive: true });
-    }, 80);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener("touchstart", handler);
-    };
-  }, [showMobileReactionBar]);
-
   return (
     <>
       {lightboxSrc && (
@@ -940,7 +894,7 @@ export default function MessageBubble({
             className={`flex flex-col gap-0 min-w-0 ${isOwn ? "items-end" : "items-start"}`}
           >
             <div className="relative flex items-center gap-1.5 max-w-full">
-              {/* Desktop hover buttons — hidden in selection mode */}
+              {/* Desktop hover action buttons */}
               {!phone && !selectionMode && (
                 <div
                   className={`flex items-center gap-0.5 transition-opacity duration-150 flex-shrink-0
@@ -983,46 +937,24 @@ export default function MessageBubble({
                 </div>
               )}
 
-              {/* Bubble */}
+              {/* Bubble + overlays */}
               <div className="relative">
-                {/* Desktop: floating reaction bar above bubble */}
+                {/* Desktop emoji picker */}
                 {!phone && showReactions && (
                   <div
                     className={`absolute bottom-full mb-2 z-50 ${isOwn ? "right-0" : "left-0"}`}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <div
-                      className="flex items-center gap-0.5 px-2 py-1.5 rounded-full border border-[var(--border)]"
-                      style={{
-                        background: "var(--bg-secondary)",
-                        boxShadow: "0 4px 24px rgba(0,0,0,0.22)",
-                        animation:
-                          "reactionBarIn 0.22s cubic-bezier(0.34,1.56,0.64,1)",
+                    <EmojiBar
+                      currentReaction={myReaction}
+                      onReact={(emoji) => {
+                        handleReact(emoji);
                       }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {REACTIONS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            handleReact(emoji);
-                            closeAll();
-                          }}
-                          style={{ touchAction: "manipulation" }}
-                          className={`text-xl w-9 h-9 flex items-center justify-center rounded-full transition-all duration-150 active:scale-90
-                            ${
-                              myReaction === emoji
-                                ? "bg-[var(--brand)]/15 scale-110 ring-2 ring-[var(--brand)]/40"
-                                : "hover:bg-[var(--bg-tertiary)] hover:scale-125"
-                            }`}
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
+                    />
                   </div>
                 )}
-                {/* Desktop: context menu */}
+
+                {/* Desktop context menu */}
                 {!phone && showMenu && (
                   <ContextMenu
                     isOwn={isOwn}
@@ -1039,6 +971,7 @@ export default function MessageBubble({
                   />
                 )}
 
+                {/* Bubble */}
                 <div
                   className={
                     isImageMsg
@@ -1063,7 +996,6 @@ export default function MessageBubble({
                     message={displayMsg}
                     isOwn={isOwn}
                     onImageClick={setLightboxSrc}
-                    // On mobile, disable the onClick lightbox — touch events handle it
                     disableImageClick={phone}
                   />
                   {!isImageMsg && (
@@ -1108,24 +1040,23 @@ export default function MessageBubble({
               </div>
             )}
 
-            {/* Mobile: inline reaction bar below bubble on single tap */}
+            {/* Mobile inline action bar — wrapped in data-bar so outside-tap handler ignores it */}
             {showMobileReactionBar && (
-              <InlineReactionBar
-                isOwn={isOwn}
-                currentReaction={myReaction}
-                messageType={displayMsg.type}
-                content={displayMsg.content}
-                fileName={displayMsg.fileName}
-                onOpenImage={() => {
-                  setLightboxSrc(displayMsg.content);
-                  setShowInlineReactions(false);
-                }}
-                onReact={(emoji) => {
-                  handleReact(emoji);
-                  setShowInlineReactions(false);
-                }}
-                onDismiss={() => setShowInlineReactions(false)}
-              />
+              <div data-bar>
+                <InlineReactionBar
+                  isOwn={isOwn}
+                  currentReaction={myReaction}
+                  messageType={displayMsg.type}
+                  content={displayMsg.content}
+                  fileName={displayMsg.fileName}
+                  onOpenImage={() => {
+                    setLightboxSrc(displayMsg.content);
+                    setShowInlineReactions(false);
+                  }}
+                  onReact={handleReact}
+                  onDismiss={() => setShowInlineReactions(false)}
+                />
+              </div>
             )}
           </div>
 
