@@ -18,7 +18,20 @@ import ThemeToggle from "../components/ui/ThemeToggle";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MOBILE_RE = /^\d{10}$/;
 
-function InputField({ icon: Icon, type, name, value, onChange, placeholder, required, minLength, maxLength, autoComplete, rightSlot, disabled }) {
+function InputField({
+  icon: Icon,
+  type,
+  name,
+  value,
+  onChange,
+  placeholder,
+  required,
+  minLength,
+  maxLength,
+  autoComplete,
+  rightSlot,
+  disabled,
+}) {
   return (
     <div className="relative group">
       <Icon
@@ -114,7 +127,13 @@ export default function AuthPage() {
 
   const switchMode = () => {
     setMode((m) => (m === "login" ? "signup" : "login"));
-    setForm({ username: "", email: "", password: "", confirmPassword: "", mobile: "" });
+    setForm({
+      username: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      mobile: "",
+    });
     setShowPass(false);
     setShowConfirmPass(false);
   };
@@ -217,7 +236,7 @@ export default function AuthPage() {
                   const val = e.target.value.replace(/\D/g, "").slice(0, 10);
                   setForm((f) => ({ ...f, mobile: val }));
                 }}
-                placeholder="Mobile number (optional, 10 digits)"
+                placeholder="Mobile number"
                 maxLength={10}
                 autoComplete="tel"
                 disabled={loading}
@@ -237,7 +256,9 @@ export default function AuthPage() {
                 placeholder="Password"
                 required
                 minLength={6}
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                autoComplete={
+                  mode === "login" ? "current-password" : "new-password"
+                }
                 disabled={loading}
                 className="input-field pl-10 pr-10"
               />
