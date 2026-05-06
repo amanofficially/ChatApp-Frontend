@@ -82,7 +82,6 @@ async function blobDownload(url, fallbackName = "file") {
 }
 
 // ─── EmojiBar ─────────────────────────────────────────────────────────────────
-// Shared reaction row — used by both mobile inline bar and desktop popup.
 function EmojiBar({ currentReaction, onReact }) {
   return (
     <div
@@ -113,7 +112,24 @@ function EmojiBar({ currentReaction, onReact }) {
   );
 }
 
+// ─── useFloatingBarDirection ─────────────────────────────────────────────────
+// Measures bubble's viewport position and decides if bar opens up or down.
+function useFloatingBarDirection(anchorRef, isVisible) {
+  const [openUp, setOpenUp] = useState(true);
+  useEffect(() => {
+    if (!isVisible || !anchorRef.current) return;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    // Prefer above unless there's not enough room (bar ~60px tall)
+    setOpenUp(spaceAbove >= 72 || spaceAbove > spaceBelow);
+  }, [isVisible, anchorRef]);
+  return openUp;
+}
+
 // ─── InlineReactionBar (mobile) ───────────────────────────────────────────────
+// Now rendered as absolute inside the bubble's relative wrapper,
+// so it floats exactly one layer above the bubble and stays inside viewport.
 function InlineReactionBar({
   isOwn,
   currentReaction,
@@ -123,13 +139,32 @@ function InlineReactionBar({
   fileName,
   onOpenImage,
   onDismiss,
+  anchorRef,
 }) {
   const isImage = messageType === "image";
   const isFile = messageType === "file";
+  const openUp = useFloatingBarDirection(anchorRef, true);
 
   return (
     <div
-      className={`flex flex-col gap-1 mt-1 ${isOwn ? "items-end mr-1" : "items-start ml-1"}`}
+      data-bar
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "absolute",
+        zIndex: 60,
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        alignItems: isOwn ? "flex-end" : "flex-start",
+        // Horizontal anchor: own messages hug right, others hug left
+        ...(isOwn ? { right: 0 } : { left: 0 }),
+        // Vertical: above or below depending on space
+        ...(openUp
+          ? { bottom: "calc(100% + 8px)" }
+          : { top: "calc(100% + 8px)" }),
+        // Prevent bar from being clipped by a parent overflow:hidden
+        pointerEvents: "auto",
+      }}
     >
       <EmojiBar currentReaction={currentReaction} onReact={onReact} />
 
@@ -140,6 +175,8 @@ function InlineReactionBar({
             background: "var(--bg-secondary)",
             boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
             animation: "reactionBarIn 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+            // Match side alignment with emoji bar
+            alignSelf: isOwn ? "flex-end" : "flex-start",
           }}
         >
           {isImage && (
@@ -156,7 +193,6 @@ function InlineReactionBar({
           <button
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
-              // Dismiss bar first (sync), then start async download
               onDismiss();
               blobDownload(content, fileName || "image");
             }}
@@ -577,7 +613,7 @@ function MessageContent({ message, isOwn, onImageClick, disableImageClick }) {
           <p
             className={`text-[11px] mt-0.5 ${isOwn ? "text-white/55" : "text-[var(--text-muted)]"}`}
           >
-            Hold to download
+            Tap to download
           </p>
         </div>
         <Download size={14} className="flex-shrink-0 opacity-40" />
@@ -614,6 +650,8 @@ export default function MessageBubble({
   const touchStart = useRef(null);
   const smileBtnRef = useRef();
   const menuBtnRef = useRef();
+  // ★ NEW: ref to the bubble element, used by floating bar to measure position
+  const bubbleRef = useRef(null);
 
   const phone = useIsPhone();
 
@@ -653,9 +691,11 @@ export default function MessageBubble({
     setShowInlineReactions(false);
   }, []);
 
-  // Sync: close if another bubble was tapped
+  // ★ FIX: Close if another bubble becomes active
   useEffect(() => {
-    if (activeSingleId !== message._id) setShowInlineReactions(false);
+    if (activeSingleId !== message._id) {
+      setShowInlineReactions(false);
+    }
   }, [activeSingleId, message._id]);
 
   // Close when entering multi-select
@@ -663,11 +703,13 @@ export default function MessageBubble({
     if (selectionMode) closeAll();
   }, [selectionMode, closeAll]);
 
-  // Close mobile bar on outside tap — skip taps inside [data-bar] wrapper
+  // ★ FIX: Outside tap handler — skip taps inside [data-bar] wrapper
+  // Moved here and simplified; no more separate effect needed below.
   useEffect(() => {
     if (!showMobileReactionBar) return;
     const handler = (e) => {
       if (e.target.closest("[data-bar]")) return;
+      if (bubbleRef.current?.contains(e.target)) return;
       setShowInlineReactions(false);
     };
     const t = setTimeout(
@@ -723,7 +765,7 @@ export default function MessageBubble({
       const prev = reactions[myUserId];
       const next = prev === emoji ? null : emoji;
       updateReaction(message._id, myUserId, next);
-      closeAll(); // closes bar + all popups
+      closeAll();
       try {
         await axios.post(`/messages/${message._id}/react`, { emoji: next });
       } catch {
@@ -789,9 +831,11 @@ export default function MessageBubble({
         onSelect?.(message._id);
         return;
       }
+      // ★ FIX: notify parent so other bubbles can close their bars
+      onBubbleTap?.(message._id);
       setShowInlineReactions((prev) => !prev);
     },
-    [selectionMode, onSelect, message._id],
+    [selectionMode, onSelect, onBubbleTap, message._id],
   );
 
   const handleBubbleClick = useCallback(
@@ -937,8 +981,8 @@ export default function MessageBubble({
                 </div>
               )}
 
-              {/* Bubble + overlays */}
-              <div className="relative">
+              {/* ★ Bubble wrapper — position:relative so floating bar anchors here */}
+              <div className="relative" ref={bubbleRef}>
                 {/* Desktop emoji picker */}
                 {!phone && showReactions && (
                   <div
@@ -1028,6 +1072,24 @@ export default function MessageBubble({
                     setShowMenu(false);
                   }}
                 />
+
+                {/* ★ Mobile inline action bar — now absolute inside bubble wrapper */}
+                {showMobileReactionBar && (
+                  <InlineReactionBar
+                    isOwn={isOwn}
+                    currentReaction={myReaction}
+                    messageType={displayMsg.type}
+                    content={displayMsg.content}
+                    fileName={displayMsg.fileName}
+                    onOpenImage={() => {
+                      setLightboxSrc(displayMsg.content);
+                      setShowInlineReactions(false);
+                    }}
+                    onReact={handleReact}
+                    onDismiss={() => setShowInlineReactions(false)}
+                    anchorRef={bubbleRef}
+                  />
+                )}
               </div>
             </div>
 
@@ -1037,25 +1099,6 @@ export default function MessageBubble({
                 style={{ marginTop: hasReactions ? "0.625rem" : undefined }}
               >
                 <TickIcon status={displayMsg.status || message.status} />
-              </div>
-            )}
-
-            {/* Mobile inline action bar — wrapped in data-bar so outside-tap handler ignores it */}
-            {showMobileReactionBar && (
-              <div data-bar>
-                <InlineReactionBar
-                  isOwn={isOwn}
-                  currentReaction={myReaction}
-                  messageType={displayMsg.type}
-                  content={displayMsg.content}
-                  fileName={displayMsg.fileName}
-                  onOpenImage={() => {
-                    setLightboxSrc(displayMsg.content);
-                    setShowInlineReactions(false);
-                  }}
-                  onReact={handleReact}
-                  onDismiss={() => setShowInlineReactions(false)}
-                />
               </div>
             )}
           </div>
