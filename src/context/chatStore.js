@@ -1,11 +1,7 @@
 import { create } from "zustand";
 import axios from "axios";
 
-// ── Helper: persist active conversation ID across page refresh ──
-const getPersistedConvId = () => {
-  try { return sessionStorage.getItem("cf_active_conv") || null; }
-  catch { return null; }
-};
+// ── Helper: persist active conversation ID ──────────────────────
 const setPersistedConvId = (id) => {
   try {
     if (id) sessionStorage.setItem("cf_active_conv", id);
@@ -49,18 +45,9 @@ const useChatStore = create((set, get) => ({
       const conversations = data.conversations;
       set({ conversations, loadingConversations: false });
 
-      // Restore active conversation from sessionStorage on first load
-      // On mobile (narrow screen), always start at sidebar home — don't auto-restore
-      const isMobile = window.innerWidth < 768;
-      const persistedId = getPersistedConvId();
-      if (persistedId && !get().activeConversation && !isMobile) {
-        const conv = conversations.find((c) => c._id === persistedId);
-        if (conv) {
-          get().setActiveConversation(conv);
-          // On mobile: don't auto-open chat on restore — stay on sidebar (home)
-          // The user can tap the conversation to open it
-        }
-      }
+      // NOTE: We intentionally do NOT auto-restore the active conversation on any
+      // device. The user should consciously click a conversation to open it.
+      // (Previously this auto-opened on desktop, which felt intrusive.)
     } catch (err) {
       set({ loadingConversations: false });
     }

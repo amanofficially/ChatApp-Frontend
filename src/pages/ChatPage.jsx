@@ -169,6 +169,8 @@ export default function ChatPage() {
       <main
         className={`flex-1 flex flex-col min-w-0 h-full relative
           ${mobileView === "chat" ? "flex" : "hidden md:flex"}`}
+        key={activeConversation?._id ?? "empty"}
+        style={activeConversation ? { animation: "chatPanelIn 0.22s cubic-bezier(0.25,0.46,0.45,0.94)" } : undefined}
       >
         {activeConversation ? (
           <>

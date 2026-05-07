@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Send, Smile, Paperclip, X, Loader2, FileText, Image as ImageIcon } from "lucide-react";
+import { Send, Smile, Paperclip, X, Loader2, FileText } from "lucide-react";
 import useChatStore from "../../context/chatStore";
 import { useTyping } from "../../hooks/useTyping";
 import { useSound } from "../../context/SoundContext";

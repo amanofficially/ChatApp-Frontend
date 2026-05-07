@@ -55,7 +55,7 @@ function DeleteModal({ username, onConfirm, onCancel }) {
 }
 
 /* ── Single conversation row with swipe-reveal delete ── */
-function ConvItem({ conv, other, isActive, isOnline, isTyping, unread, onOpen, onDelete, prefetch }) {
+function ConvItem({ conv, other, isActive, isOnline, isTyping, unread, onOpen, onDelete, prefetch, index = 0 }) {
   const [swiped, setSwiped] = useState(false);
   const touchStartX = useRef(null);
   const holdTimer = useRef(null);
@@ -108,7 +108,8 @@ function ConvItem({ conv, other, isActive, isOnline, isTyping, unread, onOpen, o
   return (
     <div
       ref={itemRef}
-      className="relative mb-0.5 overflow-hidden rounded-2xl"
+      className="relative mb-0.5 overflow-hidden rounded-2xl animate-fade-in"
+      style={{ animationDelay: `${Math.min(index * 30, 300)}ms`, animationFillMode: "both" }}
       onContextMenu={handleContextMenu}
     >
       {/* Delete action behind — revealed on swipe */}
@@ -409,7 +410,7 @@ export default function Sidebar({ onConversationSelect, onGoHome }) {
           </div>
         ) : (
           <div className="px-2 py-1">
-            {filteredConvos.map((conv) => {
+            {filteredConvos.map((conv, index) => {
               const other = getOtherParticipant(conv);
               const unread = conv.unreadCount || 0;
               const isActive = activeConvId === conv._id;
@@ -426,6 +427,7 @@ export default function Sidebar({ onConversationSelect, onGoHome }) {
                   isOnline={isOnline}
                   isTyping={isTyping}
                   unread={unread}
+                  index={index}
                   onOpen={() => openConversation(conv)}
                   onDelete={() => setDeleteTarget({ convId: conv._id, username: other.username })}
                   prefetch={() => prefetchMessages(conv._id)}
