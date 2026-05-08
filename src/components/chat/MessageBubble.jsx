@@ -54,8 +54,7 @@ function useOutsideClick(ref, onClose, ignoreRefs = []) {
       document.removeEventListener("mousedown", handler);
       document.removeEventListener("touchstart", handler);
     };
-  // ignoreRefs is a stable array ref — safe to omit from deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref, onClose]);
 }
 
@@ -84,7 +83,6 @@ async function blobDownload(url, fallbackName = "file") {
 }
 
 // ─── EmojiBar ─────────────────────────────────────────────────────────────────
-// Shared reaction row — used by both mobile inline bar and desktop popup.
 function EmojiBar({ currentReaction, onReact }) {
   return (
     <div
@@ -115,61 +113,62 @@ function EmojiBar({ currentReaction, onReact }) {
   );
 }
 
-// ─── InlineReactionBar (mobile) ───────────────────────────────────────────────
-function InlineReactionBar({
+// ─── FloatingReactionBar (mobile) ────────────────────────────────────────────
+// Renders as a fixed/absolute overlay ABOVE the bubble — zero layout impact.
+function FloatingReactionBar({
+  anchorRef,
   isOwn,
   currentReaction,
   onReact,
-  messageType,
-  content,
-  fileName,
-  onOpenImage,
-  onDismiss,
+  onClose,
 }) {
-  const isImage = messageType === "image";
-  const isFile = messageType === "file";
+  const barRef = useRef();
+  const [pos, setPos] = useState(null);
+
+  useEffect(() => {
+    if (!anchorRef.current) return;
+    const rect = anchorRef.current.getBoundingClientRect();
+    // Position the bar centred over the bubble, 8px above it
+    setPos({
+      top: rect.top + window.scrollY - 60, // 60px = bar height ~52px + 8px gap
+      left: rect.left + rect.width / 2, // bubble centre X
+    });
+  }, [anchorRef]);
+
+  // Close on outside tap
+  useEffect(() => {
+    const handler = (e) => {
+      if (barRef.current?.contains(e.target)) return;
+      if (anchorRef.current?.contains(e.target)) return;
+      onClose();
+    };
+    const t = setTimeout(
+      () => document.addEventListener("touchstart", handler, { passive: true }),
+      80,
+    );
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("touchstart", handler);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose]);
+
+  if (!pos) return null;
 
   return (
     <div
-      className={`flex flex-col gap-1 mt-1 ${isOwn ? "items-end mr-1" : "items-start ml-1"}`}
+      ref={barRef}
+      style={{
+        position: "fixed",
+        top: pos.top,
+        left: pos.left,
+        transform: "translateX(-50%)",
+        zIndex: 9999,
+        pointerEvents: "auto",
+      }}
+      onClick={(e) => e.stopPropagation()}
     >
       <EmojiBar currentReaction={currentReaction} onReact={onReact} />
-
-      {(isImage || isFile) && (
-        <div
-          className="flex items-center gap-1 px-2 py-1 rounded-2xl border border-[var(--border)]"
-          style={{
-            background: "var(--bg-secondary)",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
-            animation: "reactionBarIn 0.25s cubic-bezier(0.34,1.56,0.64,1)",
-          }}
-        >
-          {isImage && (
-            <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onOpenImage}
-              style={{ touchAction: "manipulation" }}
-              className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-[var(--brand)] hover:bg-[var(--brand)]/10 transition active:scale-95 text-sm font-medium"
-            >
-              <ZoomIn size={15} />
-              <span>View</span>
-            </button>
-          )}
-          <button
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              // Dismiss bar first (sync), then start async download
-              onDismiss();
-              blobDownload(content, fileName || "image");
-            }}
-            style={{ touchAction: "manipulation" }}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-[var(--brand)] hover:bg-[var(--brand)]/10 transition active:scale-95 text-sm font-medium"
-          >
-            <Download size={15} />
-            <span>Download</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -600,10 +599,9 @@ export default function MessageBubble({
   isSelected = false,
   onSelect,
   onEnterMultiSelect,
-  onBubbleTap,
   activeSingleId,
 }) {
-  const [showInlineReactions, setShowInlineReactions] = useState(false);
+  const [showMobileReactions, setShowMobileReactions] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -614,6 +612,7 @@ export default function MessageBubble({
   const longFired = useRef(false);
   const isPressing = useRef(false);
   const touchStart = useRef(null);
+  const bubbleRef = useRef();
   const smileBtnRef = useRef();
   const menuBtnRef = useRef();
 
@@ -636,45 +635,26 @@ export default function MessageBubble({
   }, [storeMessage?.reactions, message.reactions]);
 
   const myUserId = useMemo(() => getStoredUserId(), []);
-
   const myReaction = reactions[myUserId];
   const hasReactions = Object.keys(reactions).length > 0;
   const displayMsg = storeMessage || message;
   const isImageMsg = displayMsg.type === "image";
-  const showMobileReactionBar = phone && showInlineReactions && !selectionMode;
 
   const closeAll = useCallback(() => {
     setShowMenu(false);
     setShowReactions(false);
-    setShowInlineReactions(false);
+    setShowMobileReactions(false);
   }, []);
 
-  // Sync: close if another bubble was tapped
+  // Close if another bubble becomes active
   useEffect(() => {
-    if (activeSingleId !== message._id) setShowInlineReactions(false);
+    if (activeSingleId !== message._id) setShowMobileReactions(false);
   }, [activeSingleId, message._id]);
 
   // Close when entering multi-select
   useEffect(() => {
     if (selectionMode) closeAll();
   }, [selectionMode, closeAll]);
-
-  // Close mobile bar on outside tap — skip taps inside [data-bar] wrapper
-  useEffect(() => {
-    if (!showMobileReactionBar) return;
-    const handler = (e) => {
-      if (e.target.closest("[data-bar]")) return;
-      setShowInlineReactions(false);
-    };
-    const t = setTimeout(
-      () => document.addEventListener("touchstart", handler, { passive: true }),
-      80,
-    );
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener("touchstart", handler);
-    };
-  }, [showMobileReactionBar]);
 
   const handleCopy = useCallback(async () => {
     closeAll();
@@ -719,7 +699,7 @@ export default function MessageBubble({
       const prev = reactions[myUserId];
       const next = prev === emoji ? null : emoji;
       updateReaction(message._id, myUserId, next);
-      closeAll(); // closes bar + all popups
+      closeAll();
       try {
         await axios.post(`/messages/${message._id}/react`, { emoji: next });
       } catch {
@@ -730,7 +710,7 @@ export default function MessageBubble({
     [message._id, myUserId, reactions, closeAll],
   );
 
-  // ── Touch handlers (mobile) ──────────────────────────────────────────────
+  // ── Touch handlers (mobile long-press → multiselect / lightbox) ──────────
   const onTouchStart = useCallback(
     (e) => {
       if (["A", "BUTTON"].includes(e.target.tagName)) return;
@@ -746,7 +726,7 @@ export default function MessageBubble({
           onSelect?.(message._id);
         } else if (isImageMsg) {
           setLightboxSrc(displayMsg.content);
-          setShowInlineReactions(false);
+          setShowMobileReactions(false);
         } else {
           onEnterMultiSelect?.(message._id);
         }
@@ -781,11 +761,8 @@ export default function MessageBubble({
       touchStart.current = null;
       longFired.current = false;
       if (wasLong) return;
-      if (selectionMode) {
-        onSelect?.(message._id);
-        return;
-      }
-      setShowInlineReactions((prev) => !prev);
+      if (selectionMode) onSelect?.(message._id);
+      // Normal tap on bubble does nothing — reaction via smiley button
     },
     [selectionMode, onSelect, message._id],
   );
@@ -802,7 +779,7 @@ export default function MessageBubble({
 
   if (isDeleting) return null;
 
-  // ── Optimistic placeholder ────────────────────────────────────────────────
+  // ── Optimistic placeholder ─────────────────────────────────────────────────
   if (message._isOptimistic) {
     return (
       <div className="flex flex-col items-end mb-0.5">
@@ -863,11 +840,21 @@ export default function MessageBubble({
         />
       )}
 
+      {/* Mobile floating reaction bar — rendered as fixed overlay, no layout shift */}
+      {phone && showMobileReactions && !selectionMode && (
+        <FloatingReactionBar
+          anchorRef={bubbleRef}
+          isOwn={isOwn}
+          currentReaction={myReaction}
+          onReact={handleReact}
+          onClose={() => setShowMobileReactions(false)}
+        />
+      )}
+
       <div
         className={`flex flex-col ${isOwn ? "items-end" : "items-start"} mb-0.5 transition-colors duration-150
           ${selectionMode ? "cursor-pointer select-none" : ""}
-          ${isSelected ? "bg-[var(--brand)]/10 rounded-xl" : ""}
-          ${showMobileReactionBar ? "bg-[var(--brand)]/5 rounded-xl" : ""}`}
+          ${isSelected ? "bg-[var(--brand)]/10 rounded-xl" : ""}`}
         style={{ marginBottom: hasReactions ? "0.875rem" : undefined }}
         onClick={handleBubbleClick}
       >
@@ -933,8 +920,36 @@ export default function MessageBubble({
                 </div>
               )}
 
+              {/* Mobile smiley icon — shown on the side of the bubble always (not in selection mode) */}
+              {phone && !selectionMode && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMobileReactions((p) => !p);
+                  }}
+                  style={{
+                    touchAction: "manipulation",
+                    WebkitTapHighlightColor: "transparent",
+                  }}
+                  className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150
+                    ${isOwn ? "order-first" : "order-last"}
+                    ${
+                      showMobileReactions
+                        ? "bg-[var(--brand)]/15 text-[var(--brand)] scale-110"
+                        : "text-[var(--text-muted)]/60 hover:text-[var(--brand)] hover:bg-[var(--brand)]/10"
+                    }`}
+                  aria-label="React"
+                >
+                  {myReaction ? (
+                    <span className="text-base leading-none">{myReaction}</span>
+                  ) : (
+                    <SmilePlus size={15} />
+                  )}
+                </button>
+              )}
+
               {/* Bubble + overlays */}
-              <div className="relative">
+              <div className="relative" ref={bubbleRef}>
                 {/* Desktop emoji picker */}
                 {!phone && showReactions && (
                   <div
@@ -943,9 +958,7 @@ export default function MessageBubble({
                   >
                     <EmojiBar
                       currentReaction={myReaction}
-                      onReact={(emoji) => {
-                        handleReact(emoji);
-                      }}
+                      onReact={handleReact}
                     />
                   </div>
                 )}
@@ -1033,25 +1046,6 @@ export default function MessageBubble({
                 style={{ marginTop: hasReactions ? "0.625rem" : undefined }}
               >
                 <TickIcon status={displayMsg.status || message.status} />
-              </div>
-            )}
-
-            {/* Mobile inline action bar — wrapped in data-bar so outside-tap handler ignores it */}
-            {showMobileReactionBar && (
-              <div data-bar>
-                <InlineReactionBar
-                  isOwn={isOwn}
-                  currentReaction={myReaction}
-                  messageType={displayMsg.type}
-                  content={displayMsg.content}
-                  fileName={displayMsg.fileName}
-                  onOpenImage={() => {
-                    setLightboxSrc(displayMsg.content);
-                    setShowInlineReactions(false);
-                  }}
-                  onReact={handleReact}
-                  onDismiss={() => setShowInlineReactions(false)}
-                />
               </div>
             )}
           </div>
